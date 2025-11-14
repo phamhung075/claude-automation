@@ -1,0 +1,40 @@
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# Test artifacts
+test-*.json
+test-*.flag
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node (if added later)
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

@@ -1,0 +1,54 @@
+{
+  "workflow_name": "Critical Bug Investigation and Fix",
+  "project_id": "your-project-id",
+  "git_branch_name": "bugfix/memory-leak",
+  "goal": "Investigate and fix critical memory leak in production application causing server crashes",
+
+  "requirements": [
+    "Reproduce the memory leak in controlled environment",
+    "Profile application to identify leak source",
+    "Implement fix with proper resource cleanup",
+    "Add monitoring to detect future leaks",
+    "Create regression tests to prevent recurrence",
+    "Document root cause analysis and fix"
+  ],
+
+  "constraints": {
+    "max_time_hours": 8,
+    "must_pass_tests": true,
+    "require_security_audit": false,
+    "urgent_priority": true
+  },
+
+  "agents_to_use": [
+    "debugger-agent",
+    "root-cause-analysis-agent",
+    "coding-agent",
+    "test-orchestrator-agent",
+    "code-reviewer-agent",
+    "documentation-agent"
+  ],
+
+  "expected_deliverables": {
+    "code_files": [
+      "Fixed source files with proper cleanup"
+    ],
+    "test_files": [
+      "tests/regression/test_memory_leak.py"
+    ],
+    "documentation": [
+      "docs/postmortem/memory-leak-analysis.md"
+    ],
+    "monitoring": [
+      "monitoring/memory-usage-alerts.yml"
+    ]
+  },
+
+  "success_criteria": {
+    "memory_leak_eliminated": true,
+    "all_tests_passing": true,
+    "monitoring_in_place": true,
+    "root_cause_documented": true,
+    "code_review_approved": true
+  }
+}
