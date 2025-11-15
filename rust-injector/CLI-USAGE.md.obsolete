@@ -1,0 +1,160 @@
+# Claude-Inject CLI - Quick Usage Guide
+
+## ⚠️ Important Note
+
+**You CANNOT inject into your current running session** (like `be213f30-4014-4996-b3e1-9c3b9c022947`).
+
+This tool creates NEW managed sessions that you control via stdin pipes.
+
+## Installation
+
+The CLI is already built at:
+```bash
+./target/release/claude-inject
+```
+
+## Commands
+
+### 1. Spawn a New Session
+```bash
+./target/release/claude-inject spawn --id my-session
+```
+
+Or with a custom initial prompt:
+```bash
+./target/release/claude-inject spawn --id my-session --prompt "Hello! You are a coding assistant."
+```
+
+### 2. Inject a Message
+```bash
+./target/release/claude-inject inject --id my-session --message "Can you list files in the current directory?"
+```
+
+### 3. List Active Sessions
+```bash
+./target/release/claude-inject list
+```
+
+### 4. Stop a Session
+```bash
+./target/release/claude-inject stop --id my-session
+```
+
+## Testing with Two Terminals
+
+**Terminal 1: Spawn Session**
+```bash
+cd /home/daihu/__projects__/4genthub/claude-automation/rust-injector
+
+# Spawn a session (will run in foreground)
+./target/release/claude-inject spawn --id test-session --prompt "I'm ready for messages!"
+```
+
+**Terminal 2: Inject Messages**
+```bash
+cd /home/daihu/__projects__/4genthub/claude-automation/rust-injector
+
+# Wait 5 seconds for session to start, then inject:
+sleep 5
+
+./target/release/claude-inject inject --id test-session --message "Hello! Can you help me with Rust?"
+
+# Wait and inject another
+sleep 3
+./target/release/claude-inject inject --id test-session --message "What's 42 * 17?"
+
+# List active sessions
+./target/release/claude-inject list
+```
+
+## Session Registry
+
+Sessions are tracked in: `~/.claude-injector-registry.json`
+
+You can check it:
+```bash
+cat ~/.claude-injector-registry.json
+```
+
+## Example: Continuous Injection Loop
+
+**Terminal 1: Start session**
+```bash
+./target/release/claude-inject spawn --id worker-1
+```
+
+**Terminal 2: Inject messages every 10 seconds**
+```bash
+#!/bin/bash
+messages=(
+    "Task 1: List all .rs files"
+    "Task 2: Count lines of code"
+    "Task 3: Summarize the project structure"
+)
+
+for msg in "${messages[@]}"; do
+    echo "Sending: $msg"
+    ./target/release/claude-inject inject --id worker-1 --message "$msg"
+    sleep 10
+done
+```
+
+## Why This Works
+
+```
+Terminal 1 (Spawn):
+  ↓ Spawns Claude process with stdin pipe
+  ↓ Registers session in ~/.claude-injector-registry.json
+  ↓ Keeps process alive
+  ↓ Waits for Ctrl+C
+
+Terminal 2 (Inject):
+  ↓ Reads registry to find session
+  ↓ Writes message to stdin pipe
+  ↓ Claude receives message as user input
+  ↓ Claude processes and responds
+```
+
+## Integration with MCP Backend
+
+```python
+# In your MCP backend
+import subprocess
+import json
+
+# Spawn worker when task is created
+subprocess.run([
+    './rust-injector/target/release/claude-inject',
+    'spawn',
+    '--id', f'worker-{task_id}',
+    '--prompt', f'Work on task: {task_title}'
+], check=True)
+
+# Inject context when dependency completes
+subprocess.run([
+    './rust-injector/target/release/claude-inject',
+    'inject',
+    '--id', f'worker-{task_id}',
+    '--message', f'Dependency completed: {dep_summary}'
+], check=True)
+```
+
+## Troubleshooting
+
+### "Session not found"
+- Make sure the spawn command is running in Terminal 1
+- Check registry: `cat ~/.claude-injector-registry.json`
+
+### "Failed to start Claude session"
+- Ensure you have at least one Claude project/session in `~/.claude/projects/`
+- Create one with: `cd /some/project && claude`
+
+### Messages not visible
+- The spawned Claude runs in background (no visible output)
+- To verify injection works, run the `verify_injection` example first
+
+## Next Steps
+
+1. Test with two terminals (see above)
+2. Verify messages are being injected
+3. Integrate with your MCP backend for autonomous coordination

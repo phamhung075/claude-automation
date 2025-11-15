@@ -1,0 +1,262 @@
+# cclaude-rs Enhancement - Terminal Spawning & Tmux Integration
+
+## 🎯 Overview
+
+Enhanced `cclaude-rs` to open new terminal windows and create tmux sessions, combining the best features of both `cclaude-rs` (interactive) and `spawn-worker` (background).
+
+## ✅ Changes Made
+
+### 1. **New Terminal Spawning**
+
+**Before**: Ran Claude in current terminal (blocking)
+**After**: Opens new terminal window with tmux session attached
+
+**Platform Support**:
+- ✅ WSL2: Windows Terminal (`wt.exe`)
+- ✅ Linux: GNOME Terminal (`gnome-terminal`)
+- ✅ macOS: Terminal.app (`osascript`)
+
+### 2. **Tmux Session Creation**
+
+**Session Naming**: `cclaude-{agent}`
+- Example: `cclaude-coding-agent`, `cclaude-test-orchestrator-agent`
+
+**Features**:
+- Auto-creates tmux session before opening terminal
+- Sets `CCLAUDE_AGENT` environment variable
+- Supports message injection via tmux send-keys
+- Session persists even if terminal window closed
+
+### 3. **Conflict Handling**
+
+**Behavior**: If session already exists:
+1. Kill existing session
+2. Create new session
+3. Open terminal attached to new session
+
+**Why**: Ensures clean state, prevents session conflicts
+
+## 📊 Updated Feature Comparison
+
+| Feature | cclaude-rs (NEW) | spawn-worker | bash cclaude |
+|---------|------------------|--------------|--------------|
+| **Terminal** | ✅ New window | ❌ Detached | ✅ New window |
+| **Tmux** | ✅ Named session | ✅ Custom name | ❌ No |
+| **Agent Detection** | ✅ CCLAUDE_AGENT | ✅ CCLAUDE_AGENT + MCP | ✅ CCLAUDE_AGENT |
+| **Message Injection** | ✅ tmux send-keys | ✅ tmux send-keys | ❌ No |
+| **Registry** | ⚠️ Manual | ✅ Automatic | ❌ No |
+| **Parallel** | ⚠️ One per agent | ✅ Unlimited | ⚠️ Manual |
+
+## 🚀 Usage Examples
+
+### Basic Usage
+
+```bash
+# Launch coding agent
+cclaude-rs --agent coding-agent "Implement authentication"
+
+# Result:
+# - Creates tmux session: cclaude-coding-agent
+# - Opens new Windows Terminal tab (WSL2)
+# - Attaches to session automatically
+# - Sets CCLAUDE_AGENT=coding-agent
+# - Hooks auto-load coding-agent
+```
+
+### With Task ID
+
+```bash
+cclaude-rs --agent coding-agent "task_id: abc-123"
+
+# Session: cclaude-coding-agent
+# Prompt auto-injected after session creation
+```
+
+### With Custom Directory
+
+```bash
+cclaude-rs --agent coding-agent --dir /home/user/project "Fix bug"
+
+# Session: cclaude-coding-agent
+# Working directory: /home/user/project
+```
+
+## 🔧 Technical Implementation
+
+### Code Structure
+
+**File**: `src/bin/cclaude-rs.rs`
+
+**Key Functions**:
+1. `launch_claude_with_agent()` - Main launcher
+2. `open_terminal_with_tmux()` - Platform-specific terminal opening
+
+### Workflow
+
+```
+1. Generate session name: cclaude-{agent}
+   ↓
+2. Check tmux availability
+   ↓
+3. Create tmux session with CCLAUDE_AGENT env var
+   ↓
+4. If session exists → kill → retry
+   ↓
+5. Inject initial prompt (if provided)
+   ↓
+6. Detect platform (WSL2/Linux/macOS)
+   ↓
+7. Open appropriate terminal
+   ↓
+8. Attach to tmux session
+```
+
+### Platform Detection Logic
+
+```rust
+// WSL2
+if Command::new("wt.exe").arg("--version").output().is_ok() {
+    // Use Windows Terminal
+}
+
+// Linux
+else if Command::new("gnome-terminal").arg("--version").output().is_ok() {
+    // Use GNOME Terminal
+}
+
+// macOS
+else if cfg!(target_os = "macos") {
+    // Use Terminal.app via osascript
+}
+
+// Fallback
+else {
+    // Print manual attach command
+}
+```
+
+## 📚 Documentation Updates
+
+### Files Updated
+
+1. **CCLAUDE-LAUNCHER.md**:
+   - Updated comparison table
+   - Added tmux session management section
+   - Updated limitations section
+   - Added platform support details
+
+2. **CLAUDE.md**:
+   - Updated orchestration models table
+   - Added session naming info
+   - Updated syntax examples
+   - Clarified visibility and execution model
+
+## 🎯 Use Cases
+
+### cclaude-rs (Interactive Development)
+
+**Use When**:
+- Manual work requiring real-time feedback
+- Debugging and exploration
+- Quick testing of ideas
+- Need to see output as it happens
+- Want new terminal window for visibility
+
+**Example**:
+```bash
+cclaude-rs --agent debugging-agent "Find memory leak in server.js"
+# Opens new terminal, easy to watch progress
+```
+
+### spawn-worker (Background Automation)
+
+**Use When**:
+- Long-running tasks (hours)
+- Multiple parallel workers needed
+- Fire-and-forget automation
+- Need worker registry tracking
+- Custom worker naming required
+
+**Example**:
+```bash
+claude-inject spawn-worker --name worker-1 --agent coding-agent --task-id task-123
+# Runs in background, use list-workers to monitor
+```
+
+## 🔑 Key Differences
+
+| Aspect | cclaude-rs | spawn-worker |
+|--------|------------|--------------|
+| **Purpose** | Interactive dev | Automation |
+| **Session Name** | Fixed: `cclaude-{agent}` | Custom: any name |
+| **Visibility** | New terminal window | Detached (background) |
+| **Monitoring** | Visual in terminal | CLI commands |
+| **Registry** | Manual tracking | Automatic |
+| **Parallel** | One per agent type | Unlimited workers |
+
+## 💡 Advanced Usage
+
+### Message Injection
+
+```bash
+# Launch session
+cclaude-rs --agent coding-agent "Start implementing auth"
+
+# Later, inject additional context
+tmux send-keys -l -t cclaude-coding-agent "Use JWT with 2-hour expiry"
+tmux send-keys -t cclaude-coding-agent Enter
+```
+
+### Session Management
+
+```bash
+# List all cclaude-rs sessions
+tmux list-sessions | grep cclaude-
+
+# Re-attach to existing session
+tmux attach -t cclaude-coding-agent
+
+# Kill session
+tmux kill-session -t cclaude-coding-agent
+```
+
+### Multiple Agents
+
+```bash
+# Launch different agents (creates separate sessions)
+cclaude-rs --agent coding-agent "Implement feature"
+cclaude-rs --agent test-orchestrator-agent "Run tests"
+cclaude-rs --agent documentation-agent "Update docs"
+
+# Sessions created:
+# - cclaude-coding-agent
+# - cclaude-test-orchestrator-agent
+# - cclaude-documentation-agent
+```
+
+## 🚧 Known Limitations
+
+1. **One Session Per Agent Type**:
+   - Running `cclaude-rs --agent coding-agent` twice kills first session
+   - Use `spawn-worker` for multiple workers of same type
+
+2. **Platform Dependency**:
+   - Requires: wt.exe (WSL2) OR gnome-terminal (Linux) OR macOS
+   - Fallback: Manual attach command printed
+
+3. **No Worker Registry Integration**:
+   - Sessions not tracked in `~/.claude-worker-registry.json`
+   - Use `tmux ls` for manual tracking
+
+## 📝 Summary
+
+**cclaude-rs** now provides:
+- ✅ **Best of both worlds**: Interactive visibility + tmux session persistence
+- ✅ **Cross-platform**: WSL2, Linux, macOS support
+- ✅ **Agent detection**: Automatic via CCLAUDE_AGENT env var
+- ✅ **Message injection**: Via tmux send-keys
+- ✅ **Easy tracking**: New terminal window for each agent
+
+**Perfect for**: Manual development work where you want visibility and the ability to inject messages while maintaining session persistence.
+
+**Use spawn-worker instead when**: You need background automation, multiple parallel workers, or worker registry tracking.

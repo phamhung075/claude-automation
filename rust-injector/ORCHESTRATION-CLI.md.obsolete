@@ -1,0 +1,494 @@
+# Orchestration CLI - Complete Command Reference
+
+## Design Philosophy
+
+The orchestration agent needs to:
+1. Spawn Claude workers in tmux sessions
+2. Inject tasks and context
+3. Monitor worker progress
+4. Coordinate between workers
+5. Handle failures and retries
+
+## Command Categories
+
+### 1. SESSION MANAGEMENT
+
+#### spawn-worker
+Spawn a new Claude worker session with specific agent
+
+```bash
+claude-inject spawn-worker \
+    --name worker-coding-123 \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --task-id task-uuid \
+    --initial-prompt "Implement JWT authentication"
+```
+
+**Parameters:**
+- `--name`: Unique tmux session name
+- `--agent`: Agent type (coding-agent, test-orchestrator-agent, etc.)
+- `--dir`: Working directory
+- `--task-id`: MCP task UUID
+- `--initial-prompt`: First message to send after spawn
+
+**Output:**
+```json
+{
+  "session_name": "worker-coding-123",
+  "agent": "coding-agent",
+  "task_id": "task-uuid",
+  "tmux_session": "worker-coding-123",
+  "status": "running",
+  "spawned_at": "2025-11-15T23:15:00Z"
+}
+```
+
+#### list-workers
+List all active worker sessions
+
+```bash
+claude-inject list-workers [--format json|table]
+```
+
+**Output:**
+```
+NAME                AGENT           TASK_ID      STATUS    UPTIME
+worker-coding-123   coding-agent    task-abc     running   5m
+worker-test-456     test-agent      task-def     running   3m
+worker-docs-789     docs-agent      task-ghi     idle      10m
+```
+
+#### worker-status
+Get detailed status of a worker
+
+```bash
+claude-inject worker-status --name worker-coding-123
+```
+
+**Output:**
+```json
+{
+  "name": "worker-coding-123",
+  "agent": "coding-agent",
+  "task_id": "task-abc",
+  "status": "working",
+  "last_activity": "2025-11-15T23:17:00Z",
+  "messages_sent": 5,
+  "uptime_seconds": 300
+}
+```
+
+#### stop-worker
+Gracefully stop a worker (send Ctrl+C, wait, kill)
+
+```bash
+claude-inject stop-worker --name worker-coding-123 [--force]
+```
+
+#### kill-worker
+Force kill a worker session
+
+```bash
+claude-inject kill-worker --name worker-coding-123
+```
+
+---
+
+### 2. MESSAGE INJECTION
+
+#### inject
+Inject a message into a worker
+
+```bash
+claude-inject inject \
+    --name worker-coding-123 \
+    --message "Please add error handling to the auth function"
+```
+
+#### inject-file
+Inject file contents as context
+
+```bash
+claude-inject inject-file \
+    --name worker-coding-123 \
+    --file /path/to/requirements.txt \
+    --prompt "Implement these requirements:"
+```
+
+#### inject-context
+Inject structured context (JSON)
+
+```bash
+claude-inject inject-context \
+    --name worker-coding-123 \
+    --context '{
+        "type": "dependency_completed",
+        "task": "Design database schema",
+        "summary": "Created 5 tables with indexes",
+        "files": ["schema.sql", "models.py"]
+    }'
+```
+
+#### broadcast
+Send message to multiple workers
+
+```bash
+claude-inject broadcast \
+    --pattern "worker-*" \
+    --message "Breaking change: API endpoint updated"
+```
+
+---
+
+### 3. MONITORING & OUTPUT
+
+#### watch-worker
+Stream output from a worker in real-time
+
+```bash
+claude-inject watch-worker --name worker-coding-123
+```
+
+**Output:**
+```
+[23:15:01] Worker: Analyzing requirements...
+[23:15:05] Worker: Creating auth module...
+[23:15:10] Worker: Writing tests...
+```
+
+#### capture-output
+Capture recent output from worker
+
+```bash
+claude-inject capture-output \
+    --name worker-coding-123 \
+    --lines 50
+```
+
+#### worker-logs
+Get structured logs from worker
+
+```bash
+claude-inject worker-logs \
+    --name worker-coding-123 \
+    --since "5m ago" \
+    --format json
+```
+
+---
+
+### 4. COORDINATION & ORCHESTRATION
+
+#### notify-dependency
+Notify worker that dependency is complete
+
+```bash
+claude-inject notify-dependency \
+    --worker worker-coding-123 \
+    --completed-task "Database schema design" \
+    --summary "5 tables created with indexes" \
+    --artifacts "schema.sql,models.py"
+```
+
+#### check-ready
+Check if worker is ready for new task
+
+```bash
+claude-inject check-ready --name worker-coding-123
+```
+
+**Output:**
+```json
+{
+  "ready": true,
+  "current_task": null,
+  "idle_time_seconds": 120
+}
+```
+
+#### assign-task
+Assign new task to idle worker
+
+```bash
+claude-inject assign-task \
+    --worker worker-coding-123 \
+    --task-id task-xyz \
+    --description "Implement user login endpoint"
+```
+
+---
+
+### 5. BATCH OPERATIONS
+
+#### spawn-pool
+Spawn multiple workers at once
+
+```bash
+claude-inject spawn-pool \
+    --count 3 \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --prefix worker-coding
+```
+
+**Output:**
+```json
+{
+  "spawned": [
+    "worker-coding-1",
+    "worker-coding-2",
+    "worker-coding-3"
+  ],
+  "failed": []
+}
+```
+
+#### stop-all
+Stop all workers matching pattern
+
+```bash
+claude-inject stop-all --pattern "worker-coding-*"
+```
+
+#### health-check
+Check health of all workers
+
+```bash
+claude-inject health-check
+```
+
+**Output:**
+```json
+{
+  "healthy": ["worker-coding-1", "worker-test-2"],
+  "unhealthy": ["worker-docs-3"],
+  "total": 3
+}
+```
+
+---
+
+### 6. SESSION DISCOVERY
+
+#### find-idle
+Find idle workers available for new tasks
+
+```bash
+claude-inject find-idle [--agent coding-agent]
+```
+
+#### find-by-task
+Find worker handling specific task
+
+```bash
+claude-inject find-by-task --task-id task-uuid
+```
+
+#### find-by-agent
+Find all workers of specific agent type
+
+```bash
+claude-inject find-by-agent --agent coding-agent
+```
+
+---
+
+### 7. ADVANCED OPERATIONS
+
+#### attach
+Attach to worker session (interactive)
+
+```bash
+claude-inject attach --name worker-coding-123
+```
+
+#### send-interrupt
+Send Ctrl+C to worker
+
+```bash
+claude-inject send-interrupt --name worker-coding-123
+```
+
+#### restart-worker
+Restart a worker session
+
+```bash
+claude-inject restart-worker --name worker-coding-123
+```
+
+#### export-state
+Export worker state for persistence
+
+```bash
+claude-inject export-state --name worker-coding-123 > state.json
+```
+
+#### restore-state
+Restore worker from saved state
+
+```bash
+claude-inject restore-state --file state.json
+```
+
+---
+
+## Orchestration Workflow Example
+
+### Scenario: Build Authentication System
+
+**Step 1: Spawn specialized workers**
+```bash
+# Coding agent for implementation
+claude-inject spawn-worker \
+    --name auth-coder \
+    --agent coding-agent \
+    --task-id task-auth-impl
+
+# Test agent for testing
+claude-inject spawn-worker \
+    --name auth-tester \
+    --agent test-orchestrator-agent \
+    --task-id task-auth-test
+
+# Docs agent for documentation
+claude-inject spawn-worker \
+    --name auth-docs \
+    --agent documentation-agent \
+    --task-id task-auth-docs
+```
+
+**Step 2: Assign initial task to coder**
+```bash
+claude-inject inject \
+    --name auth-coder \
+    --message "Implement JWT authentication with refresh tokens. Use bcrypt for password hashing."
+```
+
+**Step 3: Monitor coder progress**
+```bash
+# Watch in real-time
+claude-inject watch-worker --name auth-coder
+
+# Or check status periodically
+while true; do
+    claude-inject worker-status --name auth-coder
+    sleep 30
+done
+```
+
+**Step 4: When coding complete, notify tester**
+```bash
+claude-inject notify-dependency \
+    --worker auth-tester \
+    --completed-task "JWT authentication implementation" \
+    --summary "Implemented login, logout, token refresh endpoints" \
+    --artifacts "auth.js,middleware.js,auth.test.js"
+```
+
+**Step 5: Assign testing task**
+```bash
+claude-inject inject \
+    --name auth-tester \
+    --message "Run all authentication tests. Focus on token expiry and refresh logic."
+```
+
+**Step 6: When tests pass, notify docs agent**
+```bash
+claude-inject notify-dependency \
+    --worker auth-docs \
+    --completed-task "Authentication testing" \
+    --summary "All 15 tests passing. Token handling verified." \
+    --artifacts "test-report.xml"
+```
+
+**Step 7: Assign documentation task**
+```bash
+claude-inject inject \
+    --name auth-docs \
+    --message "Document the authentication API endpoints. Include examples for login, logout, and token refresh."
+```
+
+**Step 8: Cleanup**
+```bash
+claude-inject stop-all --pattern "auth-*"
+```
+
+---
+
+## MCP Backend Integration
+
+```python
+from orchestrator import ClaudeOrchestrator
+
+# Initialize orchestrator
+orch = ClaudeOrchestrator()
+
+# Spawn worker for task
+worker = orch.spawn_worker(
+    agent="coding-agent",
+    task_id="task-123",
+    initial_prompt="Implement user registration"
+)
+
+# Monitor progress
+while not worker.is_complete():
+    status = worker.get_status()
+    print(f"Progress: {status['messages_sent']} messages")
+    time.sleep(10)
+
+# When dependency completes, notify worker
+orch.notify_dependency(
+    worker=worker,
+    completed_task="Database schema",
+    summary="Users table created"
+)
+
+# Wait for completion
+result = worker.wait_for_completion(timeout=600)
+print(f"Worker completed: {result['summary']}")
+```
+
+---
+
+## Command Summary Table
+
+| Category | Command | Purpose |
+|----------|---------|---------|
+| **Session** | spawn-worker | Create new worker with agent |
+| | list-workers | Show all active workers |
+| | worker-status | Get worker details |
+| | stop-worker | Gracefully stop |
+| | kill-worker | Force kill |
+| **Injection** | inject | Send message |
+| | inject-file | Send file content |
+| | inject-context | Send structured data |
+| | broadcast | Send to multiple |
+| **Monitoring** | watch-worker | Stream output |
+| | capture-output | Get recent output |
+| | worker-logs | Structured logs |
+| **Coordination** | notify-dependency | Dependency complete |
+| | check-ready | Is worker idle? |
+| | assign-task | Give new task |
+| **Batch** | spawn-pool | Create N workers |
+| | stop-all | Stop matching pattern |
+| | health-check | Check all health |
+| **Discovery** | find-idle | Find available workers |
+| | find-by-task | Find by task ID |
+| | find-by-agent | Find by agent type |
+| **Advanced** | attach | Interactive session |
+| | send-interrupt | Send Ctrl+C |
+| | restart-worker | Restart session |
+| | export-state | Save state |
+| | restore-state | Load state |
+
+---
+
+## Next Steps
+
+1. Implement core commands (spawn-worker, inject, list-workers)
+2. Add monitoring (watch-worker, worker-status)
+3. Implement coordination (notify-dependency, check-ready)
+4. Add batch operations (spawn-pool, broadcast)
+5. Build MCP integration library
+6. Create orchestration examples

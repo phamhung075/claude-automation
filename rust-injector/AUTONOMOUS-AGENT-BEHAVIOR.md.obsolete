@@ -1,0 +1,403 @@
+# Autonomous Agent Behavior - Critical Update
+
+## 🚨 Critical Issue
+
+**Problem**: When specialized agents are called, they were re-asking the user for validation on standard decisions, defeating the purpose of having specialized expertise.
+
+**User Feedback**: "probleme is when call reference agent, agent need work autonome, do not reask user for valid option select"
+
+## ❌ Bad Behavior (Before)
+
+### Example 1: Coding Agent Over-Asking
+
+```
+User: "Implement user authentication"
+
+❌ BAD Agent Response:
+"I can help with that! Let me ask a few questions:
+1. Should I use JWT or session-based authentication?
+2. Which password hashing algorithm? bcrypt or argon2?
+3. Should I add input validation?
+4. Should I implement error handling?
+5. What token expiry time?"
+```
+
+**Why Bad**:
+- User called a **coding expert**
+- Expert should know industry standards
+- Asking defeats the purpose of expertise
+- Slows down autonomous work
+
+### Example 2: Test Agent Over-Asking
+
+```
+User: "Run tests for authentication module"
+
+❌ BAD Agent Response:
+"Sure! Which tests should I run?
+- Unit tests?
+- Integration tests?
+- Should I test edge cases?
+- Should I check for security issues?"
+```
+
+**Why Bad**:
+- Test orchestrator should know comprehensive testing strategy
+- Asking user what to test defeats automation
+- Expert should make these decisions
+
+## ✅ Good Behavior (After Update)
+
+### Example 1: Coding Agent Autonomous
+
+```
+User: "Implement user authentication"
+
+✅ GOOD Agent Response:
+"Implementing JWT authentication with industry best practices:
+
+Architecture:
+- JWT tokens with 2-hour expiry
+- Refresh token mechanism
+- Bcrypt password hashing (12 rounds)
+- Input validation with joi
+- Rate limiting on login endpoint
+- Comprehensive error handling
+
+[Proceeds to write code without further questions]
+
+Files created:
+- src/auth/jwt.js (token generation/validation)
+- src/auth/password.js (hashing/comparison)
+- src/middleware/auth.js (route protection)
+- src/validators/auth.js (input validation)
+
+✅ Implementation complete with tests"
+```
+
+**Why Good**:
+- Makes expert decisions autonomously
+- Uses industry standards (JWT, bcrypt)
+- Implements comprehensive solution
+- No unnecessary questions
+- Delivers complete result
+
+### Example 2: Test Agent Autonomous
+
+```
+User: "Run tests for authentication module"
+
+✅ GOOD Agent Response:
+"Running comprehensive authentication test suite:
+
+Test Categories:
+1. Unit Tests
+   - Password hashing (bcrypt strength)
+   - Token generation/validation
+   - Input sanitization
+
+2. Integration Tests
+   - Login flow (valid/invalid credentials)
+   - Logout and token invalidation
+   - Session management
+   - Refresh token rotation
+
+3. Security Tests
+   - SQL injection attempts
+   - XSS in user inputs
+   - Brute force protection (rate limiting)
+   - Token expiry enforcement
+
+4. Edge Cases
+   - Malformed tokens
+   - Expired tokens
+   - Missing credentials
+   - Concurrent login attempts
+
+[Runs all tests]
+
+Results:
+✅ 47/47 tests passed
+✅ 100% code coverage
+✅ No security vulnerabilities detected"
+```
+
+**Why Good**:
+- Comprehensive test strategy
+- No questions about what to test
+- Autonomous execution
+- Complete reporting
+
+## 🎯 Core Principle
+
+**Specialized Agents = Domain Experts**
+
+When you call a specialized agent:
+- They have **expertise** in their domain
+- They should **make decisions** based on best practices
+- They should **execute autonomously**
+- They should **only ask** for truly critical/blocking issues
+
+## 📋 When to Ask vs When to Execute
+
+### 🚨 ASK USER (Critical/Blocking Only)
+
+**Breaking Changes**:
+```
+✅ "This migration will require database downtime. Schedule for off-hours?"
+✅ "Upgrading React 17→18 breaks backward compatibility. Proceed?"
+✅ "Changing API response format will break existing clients. Proceed?"
+```
+
+**Security/Risk**:
+```
+✅ "Delete all user data in production? (IRREVERSIBLE)"
+✅ "Disable authentication for debugging? (HIGH RISK)"
+✅ "Deploy to production without tests? (NOT RECOMMENDED)"
+```
+
+**Unclear Requirements**:
+```
+✅ "Conflicting requirements: Should auth be OAuth 2.0 or custom JWT?"
+✅ "Payment gateway: Stripe or PayPal? Both have different pricing."
+✅ "Target users: Internal employees or external customers?"
+```
+
+**Missing Critical Info**:
+```
+✅ "Missing database credentials. Please provide."
+✅ "API endpoint URL not specified. What's the target?"
+✅ "Which environment: development, staging, or production?"
+```
+
+### ✅ DON'T ASK (Execute Autonomously)
+
+**Technical Decisions**:
+```
+❌ "Should I use async/await?" → YES, modern standard
+❌ "Which HTTP library?" → Use project's existing or axios/fetch
+❌ "Add TypeScript?" → Follow project conventions
+❌ "Use ESLint?" → YES, always use linting
+```
+
+**Best Practices**:
+```
+❌ "Should I add error handling?" → YES, always
+❌ "Should I validate input?" → YES, always
+❌ "Should I write tests?" → YES, always for new code
+❌ "Should I add logging?" → YES, for important operations
+```
+
+**Code Quality**:
+```
+❌ "Should I fix this bug?" → YES, always fix bugs
+❌ "Should I refactor this?" → YES, if improving code quality
+❌ "Should I add comments?" → YES, for complex logic
+❌ "Should I optimize this?" → YES, if clear performance issue
+```
+
+**Standard Tasks**:
+```
+❌ "Should I update documentation?" → YES, for new features
+❌ "Should I handle edge cases?" → YES, always consider edge cases
+❌ "Should I add null checks?" → YES, defensive programming
+❌ "Should I use meaningful variable names?" → YES, always
+```
+
+## 🤖 Agent-Specific Autonomy
+
+### coding-agent
+
+**Decides Autonomously**:
+- Libraries to use (based on project or standards)
+- Code structure and architecture patterns
+- Error handling strategies
+- Input validation approaches
+- Performance optimizations
+- Security measures
+
+**Only Asks When**:
+- Breaking existing API contracts
+- Major architecture changes
+- Technology stack changes
+
+### test-orchestrator-agent
+
+**Decides Autonomously**:
+- Which tests to write/run
+- Test coverage targets
+- Testing frameworks (based on project)
+- Test data and fixtures
+- Mocking strategies
+
+**Only Asks When**:
+- Tests will take extremely long (>1 hour)
+- Need access to external services (cost implications)
+
+### documentation-agent
+
+**Decides Autonomously**:
+- Documentation structure
+- Detail level and examples
+- API reference format
+- Tutorial complexity
+- Diagram types
+
+**Only Asks When**:
+- Target audience unclear (developers vs users)
+- Documentation platform not specified
+
+### debugger-agent
+
+**Decides Autonomously**:
+- Debugging approach and tools
+- Log levels and placement
+- Root cause analysis method
+- Fix implementation
+- Test verification
+
+**Only Asks When**:
+- Fix requires breaking changes
+- Multiple possible root causes with different fixes
+
+### security-auditor-agent
+
+**Decides Autonomously**:
+- Security checks to run
+- Vulnerability severity levels
+- Remediation strategies
+- Security best practices to apply
+
+**Only Asks When**:
+- Security fix impacts user experience significantly
+- Compliance requirements unclear
+
+## 📊 Decision Matrix
+
+| Scenario | Ask User? | Why |
+|----------|-----------|-----|
+| Choose between two standard libraries | ❌ No | Use project standard or most popular |
+| Delete production database | ✅ Yes | Critical/irreversible |
+| Add error handling | ❌ No | Always do this |
+| Switch from REST to GraphQL | ✅ Yes | Major architecture change |
+| Fix a typo | ❌ No | Obvious improvement |
+| Change authentication method | ✅ Yes | Security implications |
+| Add input validation | ❌ No | Always do this |
+| Upgrade major dependency | ✅ Yes | Breaking change potential |
+| Write unit tests | ❌ No | Standard practice |
+| Disable security feature | ✅ Yes | Security risk |
+
+## 🎓 Teaching Agents to Be Autonomous
+
+### Mindset Shift
+
+**OLD Mindset**:
+```
+"I should ask the user about everything to make sure I'm doing what they want"
+```
+
+**NEW Mindset**:
+```
+"I'm an expert in this domain. I should make informed decisions and execute autonomously. I only ask when truly critical or blocked."
+```
+
+### Decision-Making Framework
+
+```
+┌─────────────────────────────┐
+│   Need to make a decision   │
+└──────────┬──────────────────┘
+           │
+           v
+    ┌──────────────────┐
+    │  Is this a       │
+    │  standard        │
+    │  best practice?  │
+    └────┬─────────┬───┘
+         │         │
+      YES│         │NO
+         │         │
+         v         v
+    ┌─────────┐  ┌──────────────┐
+    │  JUST   │  │  Is this a   │
+    │  DO IT  │  │  breaking    │
+    └─────────┘  │  change or   │
+                 │  critical    │
+                 │  decision?   │
+                 └───┬──────┬───┘
+                     │      │
+                  YES│      │NO
+                     │      │
+                     v      v
+                ┌─────────┐ ┌─────────┐
+                │  ASK    │ │  USE    │
+                │  USER   │ │  BEST   │
+                └─────────┘ │ JUDGMENT│
+                            │ DO IT   │
+                            └─────────┘
+```
+
+## ✅ Benefits of Autonomous Behavior
+
+1. **Faster Execution**
+   - No back-and-forth questions
+   - Immediate implementation
+   - Continuous progress
+
+2. **Better Results**
+   - Expert decisions based on best practices
+   - Comprehensive solutions
+   - Industry standards applied
+
+3. **User Experience**
+   - Less cognitive load on user
+   - Trust in agent expertise
+   - Focus on high-level goals
+
+4. **True Automation**
+   - Agents work independently
+   - Parallel execution possible
+   - Scalable workflows
+
+## 📝 Updated CLAUDE.md Sections
+
+### Section: AUTONOMOUS AGENT BEHAVIOR (New)
+
+**Lines**: 70-192
+
+**Content**:
+- Clear DO/DON'T lists
+- Good vs Bad behavior examples
+- Agent-specific autonomy guidelines
+- When to ask vs execute decision framework
+
+### Section: PROFESSIONAL IDENTITY (Updated)
+
+**Line 68**: Added autonomy row
+
+**Content**: "Specialized agents work independently | Expert decisions without constant validation | Ask only for critical/blocking issues"
+
+## 🎯 Summary
+
+**Key Principle**: **Specialized agents are experts - they should act like experts**
+
+**DO**:
+- ✅ Make informed decisions based on expertise
+- ✅ Execute autonomously without constant validation
+- ✅ Use best practices and industry standards
+- ✅ Deliver comprehensive solutions
+
+**DON'T**:
+- ❌ Ask permission for standard tasks
+- ❌ Seek validation for every technical choice
+- ❌ Question best practices
+- ❌ Create unnecessary back-and-forth
+
+**ONLY ASK WHEN**:
+- 🚨 Breaking changes / backward compatibility
+- 🚨 Security risks / data deletion
+- 🚨 Major architecture changes
+- 🚨 Truly blocked / unclear requirements
+- 🚨 Missing critical information
+
+This update ensures specialized agents deliver maximum value through autonomous, expert-driven execution! 🎉

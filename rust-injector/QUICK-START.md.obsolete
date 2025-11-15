@@ -1,0 +1,256 @@
+# Quick Start - Claude Worker Orchestration
+
+## ✅ Complete System Features
+
+- **Automatic Registration**: Workers registered in `~/.claude-worker-registry.json`
+- **Agent Loading**: Automatically calls `mcp__agenthub_http__call_agent("agent-name")`
+- **Permission Skipping**: Uses `--dangerously-skip-permissions` for automation
+- **Role Tracking**: Track agent type, task ID, status, message count
+- **Easy Management**: List, status, stop commands
+
+## 🚀 Quick Commands
+
+### 1. Spawn a Worker
+
+```bash
+./target/release/claude-inject spawn-worker \
+    --name worker-coding-1 \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --task-id task-123 \
+    --prompt "Implement user authentication"
+```
+
+**What happens:**
+1. Spawns Claude in tmux with `--dangerously-skip-permissions`
+2. Registers worker in registry
+3. Sends: `mcp__agenthub_http__call_agent("coding-agent")`
+4. Waits for agent to load
+5. Sends your initial prompt
+6. Worker is ready!
+
+### 2. List Workers
+
+```bash
+# Table format
+./target/release/claude-inject list-workers
+
+# JSON format
+./target/release/claude-inject list-workers --format json
+
+# Filter by agent
+./target/release/claude-inject list-workers --agent coding-agent
+
+# Filter by status
+./target/release/claude-inject list-workers --status working
+```
+
+### 3. Check Worker Status
+
+```bash
+./target/release/claude-inject worker-status --name worker-coding-1
+```
+
+**Output:**
+```
+🔍 Worker Status: worker-coding-1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Agent:        coding-agent
+Status:       working
+Task ID:      task-123
+Directory:    /home/user/project
+Messages:     3
+Tmux Session: worker-coding-1
+Uptime:       45s
+Running:      yes
+
+💡 Attach: tmux attach -t worker-coding-1
+```
+
+### 4. Inject Message
+
+```bash
+./target/release/claude-inject tmux-inject \
+    --name worker-coding-1 \
+    --message "Add error handling to the auth function"
+```
+
+### 5. View Worker Session
+
+```bash
+tmux attach -t worker-coding-1
+
+# Detach: Ctrl+B, then D
+```
+
+### 6. Stop Worker
+
+```bash
+# Graceful stop
+./target/release/claude-inject stop-worker --name worker-coding-1
+
+# Force kill
+./target/release/claude-inject stop-worker --name worker-coding-1 --force
+```
+
+## 📋 Complete Orchestration Example
+
+```bash
+# 1. Spawn coding worker
+./target/release/claude-inject spawn-worker \
+    --name auth-coder \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --task-id task-auth-impl \
+    --prompt "Implement JWT authentication with refresh tokens"
+
+# 2. Spawn test worker
+./target/release/claude-inject spawn-worker \
+    --name auth-tester \
+    --agent test-orchestrator-agent \
+    --dir /home/user/project \
+    --task-id task-auth-test
+
+# 3. List all workers
+./target/release/claude-inject list-workers
+
+# 4. Monitor coding worker
+./target/release/claude-inject worker-status --name auth-coder
+
+# 5. When coding done, notify tester
+./target/release/claude-inject tmux-inject \
+    --name auth-tester \
+    --message "Coding complete! Please run authentication tests. Files: auth.js, middleware.js"
+
+# 6. Watch tester work
+tmux attach -t auth-tester
+
+# 7. Cleanup
+./target/release/claude-inject stop-worker --name auth-coder
+./target/release/claude-inject stop-worker --name auth-tester
+```
+
+## 🔧 Registry Details
+
+**Location:** `~/.claude-worker-registry.json`
+
+**Structure:**
+```json
+{
+  "workers": {
+    "worker-coding-1": {
+      "name": "worker-coding-1",
+      "agent_type": "coding-agent",
+      "task_id": "task-123",
+      "tmux_session": "worker-coding-1",
+      "working_dir": "/home/user/project",
+      "spawned_at": 1763244699,
+      "status": "working",
+      "messages_sent": 3
+    }
+  }
+}
+```
+
+## 🎯 Worker States
+
+| Status | Meaning |
+|--------|---------|
+| `starting` | Worker just spawned, initializing |
+| `ready` | Agent loaded, waiting for task |
+| `working` | Processing task |
+| `idle` | No current task |
+| `error` | Error occurred |
+| `stopped` | Worker terminated |
+
+## 🤖 Available Agents
+
+Common agent types for `--agent`:
+- `coding-agent` - Implementation
+- `test-orchestrator-agent` - Testing
+- `documentation-agent` - Documentation
+- `debugger-agent` - Debugging
+- `security-auditor-agent` - Security review
+- `code-reviewer-agent` - Code review
+- `devops-agent` - Infrastructure
+- `system-architect-agent` - Architecture
+- ... and 30+ more
+
+## 🔍 Monitoring Tips
+
+**View live output:**
+```bash
+tmux attach -t worker-name
+```
+
+**Capture recent output:**
+```bash
+tmux capture-pane -t worker-name -p | tail -20
+```
+
+**Check if session is running:**
+```bash
+tmux has-session -t worker-name && echo "Running" || echo "Stopped"
+```
+
+## ⚠️ Important Notes
+
+1. **--dangerously-skip-permissions**: Workers run with automatic tool approval
+   - Necessary for automation
+   - Use in controlled environments only
+   - Monitor workers carefully
+
+2. **Agent Loading**: First message is always the agent loading command
+   - Format: `mcp__agenthub_http__call_agent("agent-name")`
+   - Required for worker to act as specified agent
+   - Hooks will then show correct agent type
+
+3. **Registry Persistence**: Worker info persists across restarts
+   - Manually clean up: `rm ~/.claude-worker-registry.json`
+   - Or use: `stop-worker` for each worker
+
+4. **Tmux Required**: System requires tmux for session management
+   - Install: `sudo apt install tmux`
+   - Check: `tmux -V`
+
+## 🎯 Alternative: cclaude-rs Launcher
+
+For **interactive development** (not background workers), use the Rust-based launcher:
+
+```bash
+# Build the launcher
+cargo build --release --bin cclaude-rs
+
+# Launch Claude with agent role automatically detected by hooks
+./target/release/cclaude-rs --agent coding-agent "Implement user authentication"
+
+# Using task ID
+./target/release/cclaude-rs --agent coding-agent "task_id: abc-123"
+
+# Default to master-orchestrator-agent
+./target/release/cclaude-rs "Analyze codebase"
+```
+
+**Key Benefits:**
+- ✅ Runs with `--dangerously-skip-permissions` automatically
+- ✅ Sets `CCLAUDE_AGENT` env var for hook detection
+- ✅ Simpler than tmux for interactive work
+- ✅ Compatible with worker registry system
+
+**See**: `CCLAUDE-LAUNCHER.md` for complete documentation
+
+## 🚀 Next Steps
+
+1. Test with one worker
+2. Try spawning multiple workers
+3. Practice injection and monitoring
+4. Try the cclaude-rs launcher for interactive sessions
+5. Integrate with your MCP backend
+6. Build autonomous orchestration workflows
+
+## 📖 Full Documentation
+
+- **CCLAUDE-LAUNCHER.md** - Rust launcher for interactive Claude sessions
+- **ORCHESTRATION-CLI.md** - Complete command reference
+- **ARCHITECTURE.md** - System design
+- **README.md** - Project overview

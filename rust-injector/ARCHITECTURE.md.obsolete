@@ -1,0 +1,151 @@
+# Architecture for MCP + Rust Injection Integration
+
+## The Problem
+
+**You cannot inject into existing Claude sessions** because:
+- stdin pipes are owned by the spawning process
+- Attaching to running processes requires ptrace (complex, needs permissions)
+- Claude sessions are spawned by VSCode/CLI, not your injector
+
+## The Solution: Managed Claude Workers
+
+Instead of injecting into YOUR session, spawn **dedicated Claude worker sessions** that your system controls.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ YOU (Human) - Using Claude in VSCode                       │
+│ • Monitors overall progress                                 │
+│ • Reviews completed work                                    │
+│ • Makes high-level decisions                                │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            │ (observes)
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ MCP Backend (Python/FastMCP)                                │
+│ • Manages tasks and dependencies                            │
+│ • Detects task completions                                  │
+│ • Calls Rust injector when needed                           │
+└────────────┬────────────────────────────────────────────────┘
+             │
+             │ (spawns & injects)
+             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Claude Worker Sessions (Spawned by Rust Injector)          │
+│ • Session 1: Working on Task A                             │
+│ • Session 2: Working on Task B                             │
+│ • Session 3: Waiting for dependencies                      │
+│                                                             │
+│ Each has stdin pipe controlled by injector                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Implementation Pattern
+
+### Step 1: MCP Backend Spawns Workers
+
+```python
+# In your MCP backend (Python)
+import subprocess
+import json
+
+def spawn_claude_worker(task_id, project_path):
+    """Spawn a dedicated Claude worker for a task"""
+
+    # Use the Rust injector to spawn and manage
+    result = subprocess.run([
+        './rust-injector/target/release/claude-injector',
+        'spawn-worker',
+        '--task-id', task_id,
+        '--project-path', project_path,
+    ], capture_output=True, text=True)
+
+    worker_info = json.loads(result.stdout)
+    return worker_info['session_id']
+```
+
+### Step 2: Inject Context When Dependencies Complete
+
+```python
+# MCP event handler
+async def on_subtask_completed(event):
+    # Find dependent tasks
+    dependents = await find_dependent_tasks(event.subtask_id)
+
+    for dep_task in dependents:
+        if dep_task.assigned_worker_session:
+            # Inject context into worker
+            inject_payload = {
+                "type": "user_prompt",
+                "content": f"Good news! The dependency '{event.title}' has completed. {event.completion_summary}. You can now continue with your task."
+            }
+
+            subprocess.run([
+                './rust-injector/target/release/claude-injector',
+                'inject',
+                '--session-id', dep_task.assigned_worker_session,
+                '--payload', json.dumps(inject_payload)
+            ])
+```
+
+### Step 3: Workers Execute Autonomously
+
+```
+Worker Session 1 (Claude):
+  ↓ Receives initial task via spawn
+  ↓ Starts working
+  ↓ Waits for dependency
+  ↓ [Injection happens here] ← MCP detects completion
+  ↓ Receives: "Dependency complete! Continue..."
+  ↓ Continues work autonomously
+  ↓ Completes and reports back via MCP API
+```
+
+## Benefits of This Architecture
+
+| Aspect | Benefit |
+|--------|---------|
+| **Isolation** | Each worker has dedicated environment |
+| **Control** | Full stdin/stdout access to workers |
+| **Scalability** | Spawn N workers for N tasks |
+| **Observability** | You monitor via MCP dashboard |
+| **Autonomy** | Workers run independently |
+
+## Quick Demo
+
+### Terminal 1: Start MCP Backend
+```bash
+cd agenthub_main
+python -m uvicorn src.main:app --reload
+```
+
+### Terminal 2: Spawn Worker and Inject
+```bash
+cd rust-injector
+cargo run --example simple_injection
+```
+
+### Terminal 3: Monitor via Your Current Claude
+```bash
+# You observe the system working via MCP WebSocket
+# Workers do the actual coding
+```
+
+## Implementation Checklist
+
+- [ ] Create CLI interface for injector (`spawn-worker`, `inject`, `stop`)
+- [ ] Add session registry (track active workers)
+- [ ] Implement WebSocket events from workers → MCP
+- [ ] Add worker output logging (so you can see what they did)
+- [ ] Create dashboard to monitor workers
+- [ ] Implement worker lifecycle management
+
+## Why This Works
+
+**Analogy:**
+- You (Human): Project Manager
+- MCP Backend: Task Coordinator
+- Claude Workers: Engineers doing the work
+- Rust Injector: Communication system
+
+You don't need to BE the engineer. You manage the project while autonomous workers execute tasks based on real-time context injection.

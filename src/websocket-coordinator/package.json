@@ -1,0 +1,26 @@
+{
+  "name": "agenthub-websocket-coordinator",
+  "version": "1.0.0",
+  "description": "WebSocket-based auto-input coordinator for Claude autonomous agents",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "poc": "node simple-poc.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "websocket",
+    "claude",
+    "autonomous",
+    "agents",
+    "coordination"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

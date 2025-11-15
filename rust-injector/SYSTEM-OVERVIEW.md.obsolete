@@ -1,0 +1,441 @@
+# Claude Worker Orchestration - Complete System Overview
+
+## 🏗️ System Components
+
+This system provides **two complementary approaches** for running Claude with automatic agent role detection:
+
+| Component | Purpose | Use Case | Output |
+|-----------|---------|----------|--------|
+| **spawn-worker** | Background automation | Long-running tasks, parallel work | tmux sessions |
+| **cclaude-rs** | Interactive development | Manual work, debugging, exploration | Current terminal |
+
+## 🎯 Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    User Request                         │
+└──────────────────┬──────────────────────────────────────┘
+                   │
+         ┌─────────┴─────────┐
+         │                   │
+         ▼                   ▼
+  ┌──────────────┐    ┌──────────────┐
+  │  Background  │    │ Interactive  │
+  │    Work?     │    │    Work?     │
+  └──────┬───────┘    └──────┬───────┘
+         │                   │
+         ▼                   ▼
+  ┌─────────────────┐ ┌──────────────────┐
+  │ spawn-worker    │ │  cclaude-rs      │
+  │ (tmux + inject) │ │  (direct spawn)  │
+  └────────┬────────┘ └────────┬─────────┘
+           │                   │
+           └──────────┬────────┘
+                      │
+                      ▼
+            ┌─────────────────────┐
+            │ CCLAUDE_AGENT       │
+            │ (environment var)   │
+            └─────────┬───────────┘
+                      │
+                      ▼
+            ┌─────────────────────┐
+            │ .claude/hooks/      │
+            │ session_start.py    │
+            │ (auto-detect agent) │
+            └─────────────────────┘
+```
+
+## 🔧 Component Details
+
+### 1. spawn-worker (Background Automation)
+
+**Location**: `src/bin/claude-inject.rs` (spawn-worker command)
+
+**Purpose**: Create detached tmux sessions for background work
+
+**Features**:
+- ✅ Automatic agent loading via `mcp__agenthub_http__call_agent()`
+- ✅ Worker registry tracking (`~/.claude-worker-registry.json`)
+- ✅ Message injection with tmux send-keys
+- ✅ Status monitoring and management
+- ✅ Runs with `--dangerously-skip-permissions`
+
+**Example**:
+```bash
+./target/release/claude-inject spawn-worker \
+    --name worker-coding-1 \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --task-id task-123 \
+    --prompt "Implement user authentication"
+```
+
+**When to Use**:
+- Long-running tasks (multi-hour work)
+- Parallel execution (multiple workers at once)
+- Fire-and-forget automation
+- You don't need to watch the output live
+
+### 2. cclaude-rs (Interactive Development)
+
+**Location**: `src/bin/cclaude-rs.rs`
+
+**Purpose**: Launch Claude in current terminal with automatic role detection
+
+**Features**:
+- ✅ Sets `CCLAUDE_AGENT` environment variable
+- ✅ Hooks automatically detect agent type
+- ✅ Runs with `--dangerously-skip-permissions`
+- ✅ Simple command-line interface
+- ✅ Compatible with worker registry
+
+**Example**:
+```bash
+./target/release/cclaude-rs --agent coding-agent "task_id: abc-123"
+```
+
+**When to Use**:
+- Interactive development work
+- Manual debugging and exploration
+- Quick one-off tasks
+- You want to see output live in current terminal
+- Testing before creating background worker
+
+### 3. Worker Registry System
+
+**Location**: `src/worker_registry.rs`
+
+**File**: `~/.claude-worker-registry.json`
+
+**Purpose**: Track all active Claude workers with metadata
+
+**Data Structure**:
+```json
+{
+  "workers": {
+    "worker-coding-1": {
+      "name": "worker-coding-1",
+      "agent_type": "coding-agent",
+      "task_id": "task-123",
+      "tmux_session": "worker-coding-1",
+      "working_dir": "/home/user/project",
+      "spawned_at": 1763244699,
+      "status": "working",
+      "messages_sent": 3
+    }
+  }
+}
+```
+
+**Features**:
+- Automatic registration on spawn
+- Status tracking (starting, ready, working, idle, error, stopped)
+- Message counter
+- Task ID association
+- Easy querying by agent type, status, or task ID
+
+### 4. Hook Integration System
+
+**Location**: `.claude/hooks/session_start.py`
+
+**Environment Variable**: `CCLAUDE_AGENT`
+
+**Detection Flow**:
+```python
+# Line 1538-1540 in session_start.py
+cclaude_agent = os.getenv("CCLAUDE_AGENT")
+if cclaude_agent:
+    agent_name = cclaude_agent
+```
+
+**Benefits**:
+- ✅ No conversation history parsing needed
+- ✅ Instant agent detection
+- ✅ Consistent across all launchers
+- ✅ Works with both spawn-worker and cclaude-rs
+
+## 📊 Comparison Matrix
+
+| Feature | spawn-worker | cclaude-rs | bash cclaude |
+|---------|--------------|------------|--------------|
+| **Agent Detection** | ✅ MCP call + env var | ✅ Env var only | ✅ Env var only |
+| **Background Mode** | ✅ tmux detached | ❌ Current terminal | ❌ New terminal |
+| **Registry Tracking** | ✅ Automatic | ✅ Compatible | ❌ No |
+| **Message Injection** | ✅ tmux send-keys | ❌ No | ❌ No |
+| **Status Monitoring** | ✅ Yes | ❌ No | ❌ No |
+| **Auto Permissions** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Terminal Spawning** | ❌ No (uses tmux) | ❌ No | ✅ Yes (wt.exe, gnome-terminal) |
+| **Cross-Platform** | ✅ Yes | ✅ Yes | ⚠️ Limited |
+| **Speed** | ⚡ Fast (Rust) | ⚡ Fast (Rust) | 🐌 Interpreted (Bash) |
+
+## 🎯 Decision Tree: Which Tool to Use?
+
+```
+Do you need to watch output live?
+├─ YES → cclaude-rs (interactive)
+└─ NO → spawn-worker (background)
+
+Do you need to inject messages later?
+├─ YES → spawn-worker (tmux injection)
+└─ NO → cclaude-rs (simple launch)
+
+Do you need to run multiple workers in parallel?
+├─ YES → spawn-worker (multiple sessions)
+└─ NO → cclaude-rs or spawn-worker
+
+Do you need to track worker status?
+├─ YES → spawn-worker (registry + status)
+└─ NO → cclaude-rs (simple)
+
+Do you need a new terminal window?
+├─ YES → bash cclaude (.claude/bin/cclaude)
+└─ NO → cclaude-rs or spawn-worker
+```
+
+## 🚀 Complete Workflow Examples
+
+### Example 1: Parallel Background Workers
+
+```bash
+# Spawn coding worker
+./target/release/claude-inject spawn-worker \
+    --name auth-coder \
+    --agent coding-agent \
+    --task-id task-auth-impl \
+    --prompt "Implement JWT authentication"
+
+# Spawn test worker
+./target/release/claude-inject spawn-worker \
+    --name auth-tester \
+    --agent test-orchestrator-agent \
+    --task-id task-auth-test
+
+# List all workers
+./target/release/claude-inject list-workers
+
+# Monitor coding worker
+./target/release/claude-inject worker-status --name auth-coder
+
+# Inject message when coding done
+./target/release/claude-inject tmux-inject \
+    --name auth-tester \
+    --message "Coding complete! Run tests for auth.js"
+
+# View live output
+tmux attach -t auth-tester
+```
+
+### Example 2: Interactive Development
+
+```bash
+# Start interactive session
+./target/release/cclaude-rs --agent coding-agent "Analyze authentication flow"
+
+# Hooks automatically detect agent type
+# Work interactively in current terminal
+# Exit when done
+```
+
+### Example 3: Mixed Workflow
+
+```bash
+# 1. Start with interactive exploration
+./target/release/cclaude-rs --agent system-architect-agent \
+    "Design authentication architecture"
+
+# 2. After design, spawn background workers
+./target/release/claude-inject spawn-worker \
+    --name impl-worker \
+    --agent coding-agent \
+    --task-id task-impl \
+    --prompt "Implement authentication based on design"
+
+# 3. Monitor worker progress
+./target/release/claude-inject worker-status --name impl-worker
+
+# 4. When blocked, inject guidance
+./target/release/claude-inject tmux-inject \
+    --name impl-worker \
+    --message "Use JWT with 2-hour expiry"
+
+# 5. Back to interactive for review
+./target/release/cclaude-rs --agent code-reviewer-agent \
+    "Review authentication implementation"
+```
+
+## 🔧 Installation & Setup
+
+### 1. Build All Binaries
+
+```bash
+cd /home/daihu/__projects__/4genthub/claude-automation/rust-injector
+
+# Build everything
+cargo build --release
+
+# Binaries will be in target/release/:
+# - claude-inject (orchestration CLI)
+# - cclaude-rs (interactive launcher)
+```
+
+### 2. Create Aliases (Optional)
+
+```bash
+# Add to ~/.bashrc
+echo 'alias claude-inject="/home/daihu/__projects__/4genthub/claude-automation/rust-injector/target/release/claude-inject"' >> ~/.bashrc
+echo 'alias cclaude="/home/daihu/__projects__/4genthub/claude-automation/rust-injector/target/release/cclaude-rs"' >> ~/.bashrc
+
+# Reload
+source ~/.bashrc
+```
+
+### 3. Verify Installation
+
+```bash
+# Test orchestration CLI
+claude-inject --help
+
+# Test interactive launcher
+cclaude --help
+
+# Check tmux
+tmux -V
+```
+
+## 📚 Documentation Map
+
+| Document | Purpose | Audience |
+|----------|---------|----------|
+| **SYSTEM-OVERVIEW.md** (this file) | Complete system architecture | Everyone |
+| **QUICK-START.md** | Quick start guide | New users |
+| **CCLAUDE-LAUNCHER.md** | cclaude-rs detailed docs | Interactive users |
+| **ORCHESTRATION-CLI.md** | Complete CLI reference | Automation users |
+| **ARCHITECTURE.md** | Technical deep dive | Developers |
+| **README.md** | Project overview | GitHub visitors |
+| **SESSION-MAPPING.md** | PTY injection explanation | Technical readers |
+
+## 🎓 Key Concepts
+
+### 1. Agent Types
+
+Agents are specialized AI roles loaded via MCP:
+- `master-orchestrator-agent` - Coordinates work
+- `coding-agent` - Writes code
+- `test-orchestrator-agent` - Manages testing
+- ... and 30+ more
+
+**Loading Methods**:
+- `spawn-worker`: Automatic via `mcp__agenthub_http__call_agent()`
+- `cclaude-rs`: Via `CCLAUDE_AGENT` environment variable
+- Hooks detect both methods automatically
+
+### 2. Worker States
+
+| State | Meaning | Next Actions |
+|-------|---------|--------------|
+| `starting` | Just spawned, initializing | Wait for ready |
+| `ready` | Agent loaded, waiting for task | Send prompt |
+| `working` | Processing task | Monitor or wait |
+| `idle` | No current task | Assign new task or stop |
+| `error` | Error occurred | Debug or restart |
+| `stopped` | Worker terminated | Remove from registry |
+
+### 3. Message Injection
+
+**How it Works**:
+1. Worker spawned in tmux with `--dangerously-skip-permissions`
+2. tmux session is detached (runs in background)
+3. `tmux send-keys` injects text into session
+4. `-l` flag treats text as literal (not key commands)
+5. Separate `Enter` key press submits the message
+
+**Limitations**:
+- Only works with tmux sessions (not regular terminals)
+- Cannot inject into existing `cclaude` sessions
+- TIOCSTI ioctl disabled in modern kernels
+
+### 4. Registry Persistence
+
+**Benefits**:
+- Survives system restarts
+- Track workers across sessions
+- Query by agent type, status, or task ID
+- Cleanup stopped workers automatically
+
+**File Location**: `~/.claude-worker-registry.json`
+
+**Manual Cleanup**:
+```bash
+# Remove all stopped workers
+./target/release/claude-inject cleanup-registry
+
+# Or manually edit/delete
+rm ~/.claude-worker-registry.json
+```
+
+## 🔍 Troubleshooting
+
+### Problem: Hooks not detecting agent
+
+**Solution**: Verify `CCLAUDE_AGENT` is set:
+```bash
+echo $CCLAUDE_AGENT
+```
+
+Check hook logs:
+```bash
+cat ~/logs/claude-hooks/session_start_main.log
+```
+
+### Problem: Worker not responding to injection
+
+**Solution**: Check tmux session exists:
+```bash
+tmux has-session -t worker-name && echo "Running" || echo "Stopped"
+```
+
+View session output:
+```bash
+tmux capture-pane -t worker-name -p | tail -20
+```
+
+### Problem: Registry out of sync
+
+**Solution**: Cleanup and rebuild:
+```bash
+# Remove registry
+rm ~/.claude-worker-registry.json
+
+# Stop all tmux sessions
+tmux kill-server
+
+# Restart fresh
+```
+
+## 🚧 Future Enhancements
+
+Potential improvements:
+- [ ] WebSocket-based message injection (bypass TIOCSTI limitation)
+- [ ] GUI for worker management
+- [ ] cclaude-rs terminal spawning (like bash cclaude)
+- [ ] Worker health checks and auto-restart
+- [ ] Task queue system for workers
+- [ ] Distributed worker support (multiple machines)
+
+## 📝 Summary
+
+This system provides a **complete solution** for Claude orchestration:
+
+✅ **Background Automation**: spawn-worker with tmux for long-running tasks
+✅ **Interactive Development**: cclaude-rs for manual work
+✅ **Automatic Role Detection**: CCLAUDE_AGENT environment variable
+✅ **Worker Management**: Registry system with status tracking
+✅ **Message Injection**: tmux send-keys for dynamic communication
+✅ **Hook Integration**: Seamless agent type detection
+
+**Choose the right tool**:
+- Need background? → `spawn-worker`
+- Need interactive? → `cclaude-rs`
+- Need new terminal? → `bash cclaude`
+- Need all three? → Use them together!

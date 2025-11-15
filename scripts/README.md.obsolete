@@ -1,0 +1,105 @@
+# Legacy Bash Scripts (DEPRECATED)
+
+⚠️ **DEPRECATED**: These bash scripts are legacy code and are no longer the primary orchestration method.
+
+**Use Rust tools instead**: See `../README.md` for current documentation on `cclaude-rs` and `claude-inject`.
+
+---
+
+## Why Deprecated?
+
+The bash-based orchestration system has been replaced with high-performance Rust-based launchers that provide:
+
+✅ Better performance and reliability
+✅ Cross-platform terminal support
+✅ Worker registry and management
+✅ Message injection capabilities
+✅ Proper tmux session handling
+
+---
+
+## Migration Guide
+
+### Old (Bash) → New (Rust)
+
+| Old Bash Script | New Rust Tool | Notes |
+|----------------|---------------|-------|
+| `autonomous_orchestrator.sh` | `cclaude-rs` + `claude-inject spawn-worker` | Use spawn-worker for autonomous execution |
+| Manual `claude -p` calls | `cclaude-rs --agent <agent>` | Interactive sessions with agent auto-loading |
+| Custom tmux management | `claude-inject tmux-inject` | Built-in tmux message injection |
+| Manual worker tracking | `claude-inject list-workers` | Automatic worker registry |
+
+### Example Migration
+
+**Before (Bash)**:
+```bash
+# Old way - manually spawn claude with prompts
+./scripts/autonomous_orchestrator.sh
+```
+
+**After (Rust)**:
+```bash
+# New way - spawn worker with agent auto-loading
+cd ../rust-injector
+./target/release/claude-inject spawn-worker \
+    --name worker-autonomous \
+    --agent coding-agent \
+    --dir /path/to/project \
+    --prompt "Complete the task"
+```
+
+---
+
+## What These Scripts Did
+
+### autonomous_orchestrator.sh
+- Ran infinite loop coordinating agents via `claude -p`
+- Used MCP API for task management
+- File-based coordination
+
+**Replacement**: `claude-inject spawn-worker` with proper worker registry
+
+### agent_prompts_with_knowledge.sh
+- Managed agent prompts with shared knowledge base
+- File-based knowledge sharing
+
+**Replacement**: Use MCP context system in parent project
+
+### demo_agent_communication.sh
+- Demonstrated multi-agent communication
+- File-based message passing
+
+**Replacement**: Use tmux-inject for agent communication
+
+### shared_knowledge_manager.sh
+- Managed shared knowledge files
+- Cross-agent knowledge sharing
+
+**Replacement**: Use MCP context hierarchy (Global→Project→Branch→Task)
+
+### start_autonomous_workflow.sh
+- Started autonomous workflow execution
+- Wrapper for orchestrator
+
+**Replacement**: Direct `claude-inject spawn-worker` usage
+
+### start-websocket-coordinator.sh
+- Started WebSocket coordinator (still active)
+- **NOT deprecated** - see `../src/websocket-coordinator/`
+
+---
+
+## If You Still Need Bash Scripts
+
+These scripts are kept for reference but are no longer maintained. If you absolutely need bash-based orchestration:
+
+1. They may still work but are unsupported
+2. No bug fixes or updates will be made
+3. Use at your own risk
+4. Consider contributing Rust equivalent features instead
+
+---
+
+## Questions?
+
+See main README for current Rust-based documentation: `../README.md`

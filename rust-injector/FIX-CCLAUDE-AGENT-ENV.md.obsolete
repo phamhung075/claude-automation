@@ -1,0 +1,206 @@
+# Fix: CCLAUDE_AGENT Environment Variable Propagation
+
+## 🐛 Problem
+
+When running `cclaude-rs --agent coding-agent "test prompt"`, the hooks were detecting `master-orchestrator-agent` instead of `coding-agent`.
+
+## 🔍 Root Cause
+
+**Incorrect Approach** (before):
+```rust
+Command::new("tmux")
+    .args(&["new-session", "-d", "-s", session_name, "claude", "--dangerously-skip-permissions"])
+    .env("CCLAUDE_AGENT", agent)  // ❌ Sets env for tmux command, NOT for Claude inside session
+    .output()?;
+```
+
+**Issue**: `.env()` sets the environment variable for the parent `tmux` command, but NOT for processes running inside the tmux session.
+
+## ✅ Solution
+
+**Correct Approach** (after):
+```rust
+let env_var = format!("CCLAUDE_AGENT={}", agent);
+
+Command::new("tmux")
+    .args(&[
+        "new-session",
+        "-d",
+        "-e", &env_var,  // ✅ Passes env var INTO the tmux session
+        "-s", session_name,
+        "claude",
+        "--dangerously-skip-permissions"
+    ])
+    .output()?;
+```
+
+**Key**: Use tmux's `-e` flag to pass environment variables INTO the session where Claude runs.
+
+## 📚 Tmux Environment Variable Flags
+
+| Flag | Purpose | Example |
+|------|---------|---------|
+| `-e VAR=value` | Set environment variable for NEW session | `tmux new-session -e CCLAUDE_AGENT=coding-agent` |
+| No flag | Variable only available to tmux command | `.env("VAR", "value")` in Rust |
+
+## 🧪 Verification Steps
+
+### 1. Test the Fix
+
+```bash
+# Build
+cargo build --release --bin cclaude-rs
+
+# Run with coding-agent
+./target/release/cclaude-rs --agent coding-agent "test prompt"
+```
+
+### 2. Check Environment Variable in Session
+
+```bash
+# In another terminal, check the tmux session environment
+tmux show-environment -t cclaude-coding-agent | grep CCLAUDE_AGENT
+
+# Expected output:
+# CCLAUDE_AGENT=coding-agent
+```
+
+### 3. Check Hook Logs
+
+```bash
+# View session start log
+cat ~/logs/claude-hooks/session_start_main.log | tail -20
+
+# Look for:
+# "Agent detected from CCLAUDE_AGENT: coding-agent"
+```
+
+### 4. Verify Agent Loaded in Claude Session
+
+Attach to the session and check the status line:
+```bash
+tmux attach -t cclaude-coding-agent
+```
+
+**Expected**: Status line shows `🤖 Agent: coding-agent`
+
+## 🔄 Comparison: Before vs After
+
+### Before Fix
+
+```
+User runs: cclaude-rs --agent coding-agent "test"
+     ↓
+Tmux creates session with CCLAUDE_AGENT in parent process
+     ↓
+Claude starts without CCLAUDE_AGENT in environment
+     ↓
+Hooks read CCLAUDE_AGENT → NOT FOUND
+     ↓
+Hooks default to master-orchestrator-agent ❌
+```
+
+### After Fix
+
+```
+User runs: cclaude-rs --agent coding-agent "test"
+     ↓
+Tmux creates session with -e CCLAUDE_AGENT=coding-agent
+     ↓
+Claude starts WITH CCLAUDE_AGENT in environment
+     ↓
+Hooks read CCLAUDE_AGENT → coding-agent FOUND ✅
+     ↓
+Hooks load coding-agent automatically ✅
+```
+
+## 🛠️ Technical Deep Dive
+
+### Environment Variable Inheritance in Tmux
+
+**Parent Process → Tmux Command**:
+```rust
+Command::new("tmux")
+    .env("VAR", "value")  // VAR available to tmux binary
+```
+
+**Tmux Session → Processes Inside**:
+```bash
+tmux new-session -e VAR=value  # VAR available to processes in session
+```
+
+### Why This Matters
+
+1. **Hooks run inside Claude process**: They check `os.getenv("CCLAUDE_AGENT")`
+2. **Claude runs inside tmux session**: Needs environment variable IN session
+3. **Tmux isolates environments**: Parent env vars don't automatically propagate
+
+### The `-e` Flag
+
+From `man tmux`:
+```
+-e environment
+    Set an environment variable for the newly created session.
+```
+
+## 📝 Code Changes
+
+**File**: `src/bin/cclaude-rs.rs`
+
+**Lines Changed**: 87-118
+
+**Key Addition**:
+```rust
+let env_var = format!("CCLAUDE_AGENT={}", agent);
+```
+
+**In `new-session` args**:
+```rust
+"-e", &env_var,  // Pass environment variable into session
+```
+
+## ✅ Testing Checklist
+
+- [ ] Build completes without errors
+- [ ] Running `cclaude-rs --agent coding-agent "test"` opens new terminal
+- [ ] `tmux show-environment -t cclaude-coding-agent` shows `CCLAUDE_AGENT=coding-agent`
+- [ ] Hook logs show correct agent detection
+- [ ] Status line in Claude session shows correct agent
+- [ ] Different agents create different sessions with correct env vars
+
+## 🚀 Related Components
+
+This fix is consistent with `spawn-worker` which uses:
+```rust
+TmuxSpawner::inject_message(&name, &format!("mcp__agenthub_http__call_agent(\"{}\")", agent))?;
+```
+
+**spawn-worker** uses dual detection:
+1. `CCLAUDE_AGENT` environment variable
+2. Manual MCP call injection
+
+**cclaude-rs** now properly uses:
+1. `CCLAUDE_AGENT` environment variable (via `-e` flag)
+
+Both methods work correctly with hooks!
+
+## 📖 Related Documentation
+
+- `.claude/hooks/session_start.py` - Agent detection logic (line 1538)
+- `CCLAUDE-LAUNCHER.md` - Complete cclaude-rs documentation
+- `SYSTEM-OVERVIEW.md` - System architecture
+
+## 💡 Lessons Learned
+
+1. **Environment propagation is not automatic** in process spawning
+2. **Tmux has specific flags** for session environment variables
+3. **Testing with hook logs** is essential for verification
+4. **Platform-specific behavior** requires careful testing
+
+## 🎯 Next Steps
+
+After verifying the fix works:
+1. Test with multiple different agents
+2. Verify environment persists across session reattach
+3. Test on different platforms (WSL2, Linux, macOS)
+4. Update user-facing documentation if needed

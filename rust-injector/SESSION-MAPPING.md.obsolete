@@ -1,0 +1,203 @@
+# Session ID → Process Mapping
+
+## What This Solves
+
+**Question:** "When Claude starts, it has a session ID. How can I use this ID to find the terminal and inject messages?"
+
+**Answer:** You can FIND the session and terminal, but you CANNOT inject via stdin into existing sessions. Here's why and what you can do instead.
+
+## Finding Your Session
+
+```bash
+# Find all running Claude sessions
+./target/release/claude-inject find
+
+# Find specific session by ID
+./target/release/claude-inject find --id be213f30
+```
+
+## Example Output
+
+```
+✅ Found session!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Session ID: be213f30-4014-4996-b3e1-9c3b9c022947
+  Process PID: 16924
+  Project: /home/daihu/__projects__/4genthub/claude-automation/rust-injector
+
+  Terminal Info:
+    Type: code (VSCode integrated terminal)
+    PID: 8116
+    Command: /bin/bash --init-file ...
+
+💡 Injection Options:
+  ⚠️  Direct stdin injection: NOT POSSIBLE
+  ✅ Terminal automation: Use xdotool, tmux, etc.
+```
+
+## Why Direct Injection Doesn't Work
+
+### stdin Pipe Ownership
+
+```
+┌──────────────────────────────────────────────┐
+│ VSCode (PID 8116)                            │
+│ ↓ spawns Claude                              │
+│ ↓ creates stdin pipe                         │
+│ ↓ OWNS write end of pipe                     │
+└──────────────┬───────────────────────────────┘
+               │ (stdin pipe)
+               ↓
+┌──────────────────────────────────────────────┐
+│ Claude Process (PID 16924)                   │
+│ • Has READ end of stdin pipe                 │
+│ • Cannot give access to other processes      │
+└──────────────────────────────────────────────┘
+               ▲
+               │ (tries to write)
+               X PERMISSION DENIED
+┌──────────────────────────────────────────────┐
+│ Our Injector Tool                            │
+│ • Can see the process exists                 │
+│ • Can see the PID                            │
+│ • CANNOT write to stdin (owned by VSCode)    │
+└──────────────────────────────────────────────┘
+```
+
+### File Descriptor Isolation
+
+```bash
+# What we can see:
+ls -la /proc/16924/fd/
+# lrwx------ 1 user user 64 ... 0 -> /dev/pts/1  (stdin - READ only)
+
+# What we need but don't have:
+# The WRITE end is in /proc/8116/fd/ (VSCode process)
+# and we can't access it!
+```
+
+## Solutions for Different Use Cases
+
+### Use Case 1: Testing Injection (Your Current Session)
+
+**NOT POSSIBLE** to inject into your current session via stdin.
+
+**Workaround:**
+- Open a second terminal
+- Spawn a new managed session there
+- Inject into that session
+- Observe the results
+
+### Use Case 2: MCP Backend Coordination
+
+**RECOMMENDED APPROACH: Managed Workers**
+
+```python
+# In your MCP backend:
+
+# 1. When task is created, spawn dedicated worker
+import subprocess
+
+subprocess.Popen([
+    './rust-injector/target/release/claude-inject',
+    'spawn',
+    '--id', f'worker-{task_id}',
+    '--prompt', f'Work on: {task_description}'
+])
+
+# 2. When dependency completes, inject context
+subprocess.run([
+    './rust-injector/target/release/claude-inject',
+    'inject',
+    '--id', f'worker-{task_id}',
+    '--message', f'Dependency completed: {summary}'
+])
+
+# 3. Worker processes task autonomously
+# 4. Worker reports back via MCP API
+```
+
+### Use Case 3: Terminal Automation (Advanced)
+
+If you MUST inject into existing sessions, use terminal automation:
+
+#### For X11 (Linux with GUI):
+```bash
+# Get window ID
+xdotool search --pid 8116
+
+# Send keystrokes
+xdotool type --window <WINDOW_ID> "Your message here"
+xdotool key --window <WINDOW_ID> Return
+```
+
+#### For tmux:
+```bash
+# If Claude is running in a tmux session
+tmux send-keys -t <session-name> "Your message" Enter
+```
+
+#### For screen:
+```bash
+screen -S <session-name> -p 0 -X stuff "Your message^M"
+```
+
+## Architecture Comparison
+
+### Current Limitation
+```
+Your Session (be213f30...)
+  ↑ You type here
+  ↑ VSCode owns stdin
+  X Can't inject (no access to pipe)
+```
+
+### Recommended Solution
+```
+Your Session (be213f30...)
+  ↑ You monitor/review
+
+MCP Backend
+  ↓ spawns & manages
+
+Worker Session 1 (worker-task-123)
+  ↑ Receives injections ✅
+  ↑ Works autonomously
+
+Worker Session 2 (worker-task-456)
+  ↑ Receives injections ✅
+  ↑ Works autonomously
+```
+
+## Quick Test
+
+Try finding your current session:
+
+```bash
+# Get your session ID from Claude's status line
+# Then:
+./target/release/claude-inject find --id <first-8-chars>
+
+# Example:
+./target/release/claude-inject find --id be213f30
+```
+
+You'll see:
+- ✅ Session found
+- ✅ PID identified
+- ✅ Terminal detected
+- ❌ But stdin injection not possible
+
+## Conclusion
+
+**For your MCP integration:** Use managed worker sessions, not existing session injection.
+
+**Why:**
+- Full control over stdin/stdout
+- Scalable (spawn N workers)
+- Autonomous operation
+- Clean lifecycle management
+
+**You (Human):** Monitor via current session
+**Workers:** Execute tasks via injected context
+**MCP Backend:** Coordinates everything

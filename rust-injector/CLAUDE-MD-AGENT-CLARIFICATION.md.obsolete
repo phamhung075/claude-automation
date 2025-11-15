@@ -1,0 +1,324 @@
+# CLAUDE.md Agent Loading Clarification
+
+## 🚨 Critical Update
+
+**Date**: 2025-11-16
+
+**Issue**: Previous CLAUDE.md rules were confusing and contradictory about agent loading
+
+## ❌ Old (Confusing) Rule
+
+```
+## CLOCK IN FIRST
+
+### Default Agent: master-orchestrator-agent
+
+Principal Sessions default to master-orchestrator-agent:
+- Coordinates all work
+- Manages task creation and delegation
+
+Always call: mcp__agenthub_http__call_agent("master-orchestrator-agent")
+```
+
+**Problem**: This rule created confusion:
+1. External launchers set CCLAUDE_AGENT=coding-agent
+2. But rule says "always call master-orchestrator-agent first"
+3. Claude confused: Should I ignore CCLAUDE_AGENT and call master-orchestrator-agent?
+4. Result: Wrong agent loaded, user expectations violated
+
+## ✅ New (Clear) Rule
+
+```
+## AGENT LOADING - CALL ON DEMAND
+
+DO NOT automatically call master-orchestrator-agent!
+Load the agent based on context:
+
+Priority Order (check in this order):
+1. CCLAUDE_AGENT environment variable (highest priority)
+   - Hooks auto-load agent
+   - You don't need to call anything
+
+2. User-specified agent in conversation
+   - User says: "act as coding-agent"
+   - You call: mcp__agenthub_http__call_agent("coding-agent")
+
+3. Task/context requires specific agent
+   - Task needs coding → call coding-agent
+
+4. No agent specified (only then default)
+   - Then and only then: Default to master-orchestrator-agent
+```
+
+**Benefits**:
+- ✅ Clear priority order
+- ✅ Respects CCLAUDE_AGENT from external launchers
+- ✅ Calls agent on demand, not blindly
+- ✅ master-orchestrator-agent only when nothing specified
+
+## 📊 Decision Tree
+
+```
+Session Starts
+     |
+     v
+Is CCLAUDE_AGENT set?
+     |
+     +-- YES → Hooks auto-load agent
+     |         ↓
+     |         You don't call anything
+     |         ↓
+     |         You ARE that agent
+     |
+     +-- NO → Did user specify agent?
+               |
+               +-- YES → Call that agent
+               |         ↓
+               |         You ARE that agent
+               |
+               +-- NO → Does task imply agent?
+                         |
+                         +-- YES → Call implied agent
+                         |         ↓
+                         |         You ARE that agent
+                         |
+                         +-- NO → Call master-orchestrator-agent
+                                   ↓
+                                   You ARE orchestrator
+```
+
+## 🎯 Practical Examples
+
+### Example 1: cclaude-rs Spawns coding-agent
+
+```bash
+# User runs:
+cclaude-rs --agent coding-agent "implement auth"
+
+# What happens:
+1. cclaude-rs sets CCLAUDE_AGENT=coding-agent
+2. Hooks detect CCLAUDE_AGENT
+3. Hooks call: mcp__agenthub_http__call_agent("coding-agent")
+4. Claude receives system_prompt for coding-agent
+5. Claude acts as coding-agent (NOT master-orchestrator-agent!)
+
+# Claude should:
+✅ Recognize: "I am coding-agent"
+✅ Use coding-agent tools and instructions
+❌ Don't call master-orchestrator-agent
+❌ Don't ignore CCLAUDE_AGENT
+```
+
+### Example 2: Manual Session, User Requests Agent
+
+```bash
+# User runs normal Claude (no CCLAUDE_AGENT)
+claude
+
+# User says:
+"Act as test-orchestrator-agent and run all tests"
+
+# Claude should:
+1. ✅ Check CCLAUDE_AGENT → Not set
+2. ✅ Check user request → User wants test-orchestrator-agent
+3. ✅ Call: mcp__agenthub_http__call_agent("test-orchestrator-agent")
+4. ✅ Become test-orchestrator-agent
+5. ✅ Run tests as that agent
+
+# Don't:
+❌ Call master-orchestrator-agent first
+❌ Ignore user's agent specification
+```
+
+### Example 3: Manual Session, No Agent Specified
+
+```bash
+# User runs normal Claude (no CCLAUDE_AGENT)
+claude
+
+# User says:
+"Analyze this codebase"
+
+# Claude should:
+1. ✅ Check CCLAUDE_AGENT → Not set
+2. ✅ Check user request → No specific agent mentioned
+3. ✅ Check task context → Analysis could be any agent
+4. ✅ Default: Call master-orchestrator-agent
+5. ✅ Coordinate work as orchestrator
+
+# This is the ONLY case to default to master-orchestrator-agent
+```
+
+## 🔑 Key Principles
+
+### 1. Respect External Launchers
+
+When CCLAUDE_AGENT is set:
+- ✅ **Trust it** - external launcher knows what it wants
+- ✅ **Don't override** - hooks already loaded that agent
+- ❌ **Don't call master-orchestrator-agent** - it's the wrong agent
+
+### 2. Agent on Demand
+
+- ✅ Call the agent **the user/task needs**
+- ✅ Be context-aware
+- ❌ Don't blindly call master-orchestrator-agent every time
+
+### 3. Priority Hierarchy
+
+```
+1. CCLAUDE_AGENT (external launcher)  <-- Highest priority
+2. User explicit request              <-- Second priority
+3. Task context/inference             <-- Third priority
+4. Default to master-orchestrator     <-- Last resort only
+```
+
+## 📝 Updated CLAUDE.md Sections
+
+### Section 1: AGENT LOADING - CALL ON DEMAND
+
+**Lines**: 59-115
+
+**Changes**:
+- Renamed from "CLOCK IN FIRST"
+- Added priority order (1-4)
+- Emphasized CCLAUDE_AGENT as highest priority
+- Added critical rules (✅ Do / ❌ Don't)
+
+### Section 2: AGENT-ON-DEMAND WORKFLOW
+
+**Lines**: 16-59
+
+**Changes**:
+- Renamed from "MASTER ORCHESTRATOR COMPLETE WORKFLOW"
+- Added agent specification check (steps 2a-2c)
+- Shows decision tree for agent selection
+- Removed assumption of master-orchestrator-agent by default
+
+### Section 3: Workflow
+
+**Lines**: 152-183
+
+**Changes**:
+- Added "Check for CCLAUDE_AGENT first"
+- Shows two examples: external launcher vs manual session
+- Clarified when to call vs when hooks handle it
+
+## 🎓 Teaching Claude
+
+### What Claude Should Learn
+
+**Old Misconception**:
+```
+"I should always call master-orchestrator-agent first"
+"It's the default for principal sessions"
+```
+
+**New Understanding**:
+```
+"I should check context before loading an agent:
+ 1. Is CCLAUDE_AGENT set? → Hooks loaded it, I'm that agent
+ 2. Did user specify? → Call what user wants
+ 3. Does task imply agent? → Call appropriate agent
+ 4. Nothing specified? → Then default to orchestrator"
+```
+
+## ✅ Testing the Changes
+
+### Test 1: External Launcher
+
+```bash
+# Spawn with coding-agent
+cclaude-rs --agent coding-agent "test"
+
+# Expected Claude behavior:
+✅ Recognizes CCLAUDE_AGENT=coding-agent
+✅ Acts as coding-agent (not orchestrator)
+✅ Uses coding-agent tools and instructions
+```
+
+### Test 2: Manual with User Request
+
+```bash
+# Normal Claude session
+claude
+
+# User: "act as documentation-agent and update README"
+
+# Expected Claude behavior:
+✅ Calls: mcp__agenthub_http__call_agent("documentation-agent")
+✅ Becomes documentation-agent
+✅ Updates README as doc agent
+```
+
+### Test 3: Manual with No Specification
+
+```bash
+# Normal Claude session
+claude
+
+# User: "help me with this project"
+
+# Expected Claude behavior:
+✅ No CCLAUDE_AGENT detected
+✅ No specific agent requested
+✅ Defaults to master-orchestrator-agent
+✅ Acts as coordinator
+```
+
+## 🚨 Common Mistakes to Avoid
+
+### Mistake 1: Always Calling Master-Orchestrator
+
+```
+❌ WRONG:
+Every session start → call master-orchestrator-agent
+Ignore CCLAUDE_AGENT
+
+✅ RIGHT:
+Check context first
+Respect CCLAUDE_AGENT
+Call appropriate agent
+```
+
+### Mistake 2: Ignoring CCLAUDE_AGENT
+
+```
+❌ WRONG:
+CCLAUDE_AGENT=coding-agent set
+Claude calls master-orchestrator-agent anyway
+
+✅ RIGHT:
+CCLAUDE_AGENT=coding-agent set
+Hooks already loaded coding-agent
+Claude acts as coding-agent
+```
+
+### Mistake 3: Defaulting Too Early
+
+```
+❌ WRONG:
+User says "implement feature"
+Claude defaults to master-orchestrator-agent
+
+✅ RIGHT:
+User says "implement feature"
+Implementation = coding task
+Claude calls coding-agent
+```
+
+## 📚 Related Documentation
+
+- **CLAUDE.md** - Updated with new agent loading rules
+- **FIX-CCLAUDE-AGENT-ENV.md** - Environment variable propagation
+- **CCLAUDE-LAUNCHER.md** - External launcher documentation
+- **SYSTEM-OVERVIEW.md** - Complete system architecture
+
+## 🎯 Summary
+
+**Old Rule**: "Always call master-orchestrator-agent first"
+**Problem**: Conflicted with external launchers, created confusion
+**New Rule**: "Call agent on demand based on priority order"
+**Benefit**: Respects context, clear decision tree, no confusion
+
+**Key Takeaway**: Claude should be **context-aware** and **respect specifications**, not blindly default to master-orchestrator-agent in every case.

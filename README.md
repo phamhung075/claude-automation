@@ -1,21 +1,21 @@
 # Claude Automation System
 
-**Autonomous Multi-Agent Workflow Orchestration using Claude Code CLI**
+**High-Performance Multi-Agent Workflow Orchestration with Rust-Based Launchers**
 
 ---
 
 ## 🎯 What is This?
 
-A **fully autonomous multi-agent system** that coordinates AI agents to complete complex tasks without human intervention. Agents work as a team, communicate, share knowledge, and run until all work is complete.
+A **Rust-based launcher system** for orchestrating Claude AI agents with tmux sessions, message injection, and worker management. Built for performance, reliability, and seamless integration with the agenthub MCP backend.
 
 ### Key Features
 
-✅ **Zero API costs** - Uses Claude Code subscription via `claude -p`
-✅ **Autonomous loops** - Runs 24/7 until all conditions met
-✅ **Agent communication** - Agents share knowledge and coordinate
-✅ **File-based architecture** - Simple, debuggable, no complex infrastructure
-✅ **MCP integration** - Syncs with Model Context Protocol task management
-✅ **Graceful degradation** - Handles failures, requests human help when stuck
+✅ **cclaude-rs** - Interactive launcher that opens new terminals with tmux
+✅ **claude-inject** - Message injection and background worker spawning
+✅ **Automatic agent detection** - Hooks auto-load agents from status line
+✅ **Worker registry** - Track and manage multiple background workers
+✅ **Tmux integration** - Visible sessions with message injection capability
+✅ **Cross-platform** - WSL2 (Windows Terminal), Linux (gnome-terminal), macOS (Terminal.app)
 
 ---
 
@@ -24,207 +24,270 @@ A **fully autonomous multi-agent system** that coordinates AI agents to complete
 ### Prerequisites
 
 ```bash
-# 1. Install Claude Code CLI
+# 1. Install Rust (for building from source)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# 2. Install Claude Code CLI
 # https://docs.claude.com/en/docs/claude-code/installation
 
-# 2. Install dependencies
-sudo apt-get install jq curl
-
-# 3. Verify installation
-which claude
-jq --version
+# 3. Install tmux
+sudo apt-get install tmux  # Ubuntu/Debian
+brew install tmux          # macOS
 ```
 
-### Installation
-
-#### As Git Submodule (Recommended)
+### Build the Tools
 
 ```bash
-# From your project root
-git submodule add <your-repo-url> claude-automation
-git submodule update --init --recursive
+cd rust-injector
 
-# Make scripts executable
-chmod +x claude-automation/scripts/*.sh
-chmod +x claude-automation/tests/*.sh
-```
+# Build both cclaude-rs and claude-inject
+cargo build --release
 
-#### Standalone Installation
-
-```bash
-# Clone directly
-git clone <your-repo-url> claude-automation
-cd claude-automation
-
-# Make scripts executable
-chmod +x scripts/*.sh
-chmod +x tests/*.sh
+# Binaries will be in:
+# ./target/release/cclaude-rs
+# ./target/release/claude-inject
 ```
 
 ### Test the System
 
 ```bash
-# Run comprehensive tests
-./tests/test_autonomous_system.sh
+# Launch an interactive coding session
+./target/release/cclaude-rs --agent coding-agent "Implement authentication"
 
-# See agent communication demo
-./scripts/demo_agent_communication.sh
+# Spawn a background worker
+./target/release/claude-inject spawn-worker \
+    --name worker-1 \
+    --agent coding-agent \
+    --dir /path/to/project \
+    --prompt "Fix bug in auth.js"
+
+# Check worker status
+./target/release/claude-inject list-workers
+./target/release/claude-inject worker-status --name worker-1
+
+# Inject a message into running worker
+./target/release/claude-inject tmux-inject \
+    --name worker-1 \
+    --message "Add error handling"
 ```
 
 ---
 
-## 📖 Core Concepts
+## 📖 Core Tools
 
-### 1. Autonomous Orchestration Loop
+### 1. cclaude-rs (Interactive Launcher)
 
-```
-Human submits goal
-    ↓
-AI generates task breakdown
-    ↓
-Tasks created in MCP database
-    ↓
-┌─────────────────────────────────────┐
-│ LOOP (runs forever until complete) │
-│                                     │
-│ 1. Fetch next task from MCP        │
-│ 2. Write task to file               │
-│ 3. Call: cat task | claude -p      │
-│ 4. Agent writes result to file     │
-│ 5. Read result file                │
-│ 6. Update MCP task status          │
-│ 7. Check completion conditions     │
-│ 8. If complete → STOP              │
-│    If incomplete → CONTINUE         │
-└─────────────────────────────────────┘
+**Purpose**: Launch Claude in a new terminal window with tmux session
+
+**Features**:
+- Opens new terminal (Windows Terminal on WSL2, gnome-terminal on Linux, Terminal.app on macOS)
+- Creates named tmux session: `cclaude-{agent-name}`
+- Hooks automatically load specified agent
+- Visible session for real-time feedback
+- Supports custom working directory
+
+**Usage**:
+```bash
+cclaude-rs --agent <agent-name> [--dir <path>] "<prompt>"
+
+# Examples:
+cclaude-rs --agent coding-agent "Implement JWT auth"
+cclaude-rs --agent test-orchestrator-agent "Run unit tests"
+cclaude-rs --agent coding-agent --dir /home/user/project "Fix bug"
 ```
 
-### 2. Agent Communication
-
-Agents share knowledge through a central JSON file:
-
-- **Discoveries**: What they learned
-- **Warnings**: Issues to avoid
-- **Messages**: Direct agent-to-agent communication
-- **Code Patterns**: Reusable implementations
-- **Bug Resolutions**: Documented fixes
-
-### 3. Stop Conditions
-
-The loop stops when ALL conditions are met:
-
-✅ All MCP tasks status = "done"
-✅ Tests passed flag exists
-✅ Code review approved flag exists
-✅ Security audit passed flag exists
+**When to Use**:
+- Interactive development work
+- Debugging and testing
+- Real-time feedback needed
+- Manual intervention expected
 
 ---
 
-## 🛠️ Usage
+### 2. claude-inject (Worker & Message Management)
 
-### Start Autonomous Workflow
+**Purpose**: Spawn background workers and inject messages into tmux sessions
+
+#### 2a. Spawn Worker
+
+**Features**:
+- Creates detached tmux session
+- Registers worker in worker registry
+- Auto-loads specified agent via hooks
+- Supports task ID tracking
+- Background execution (fire-and-forget)
+
+**Usage**:
+```bash
+claude-inject spawn-worker \
+    --name <worker-name> \
+    --agent <agent-name> \
+    --dir <working-directory> \
+    [--task-id <mcp-task-id>] \
+    [--prompt "<initial-prompt>"]
+
+# Example:
+claude-inject spawn-worker \
+    --name worker-auth \
+    --agent coding-agent \
+    --dir /home/user/project \
+    --task-id task-abc-123 \
+    --prompt "Implement OAuth flow"
+```
+
+**When to Use**:
+- Long-running tasks
+- Background automation
+- Parallel work (multiple workers)
+- Fire-and-forget workflows
+
+#### 2b. Worker Management
 
 ```bash
-./scripts/start_autonomous_workflow.sh \
-    "project-id" \
-    "feature/branch-name" \
-    "Goal description: Build complete feature with tests and documentation"
+# List all workers
+claude-inject list-workers
+claude-inject list-workers --format table
+claude-inject list-workers --agent coding-agent
+
+# Get worker status
+claude-inject worker-status --name worker-auth
+
+# Stop a worker
+claude-inject stop-worker --name worker-auth
+claude-inject stop-worker --name worker-auth --force
 ```
 
-**What happens:**
-
-1. AI generates task breakdown (5-10 subtasks)
-2. Creates MCP tasks in database
-3. Starts autonomous loop
-4. Agents execute tasks sequentially
-5. Tests run automatically
-6. Code review happens automatically
-7. Security audit runs automatically
-8. Stops when all conditions met
-
-### Monitor Progress
+#### 2c. Message Injection
 
 ```bash
-# Watch file changes
-watch -n 2 'ls -lh /tmp/agenthub_autonomous/'
+# Inject message into running worker
+claude-inject tmux-inject \
+    --name worker-auth \
+    --message "Add rate limiting to API"
 
-# View agent logs
-tail -f /tmp/agenthub_autonomous/agent_raw_output.log
-
-# Check MCP task status
-curl -s http://localhost:8000/api/manage_task \
-     -d '{"action":"list","git_branch_id":"branch-id"}' | jq
-```
-
-### Human Intervention
-
-When an agent gets blocked:
-
-```bash
-# System creates flag
-/tmp/agenthub_autonomous/human_intervention_needed.flag
-
-# View blocker details
-cat /tmp/agenthub_autonomous/blocker_details.txt
-
-# Fix the issue, then remove flag
-rm /tmp/agenthub_autonomous/human_intervention_needed.flag
-
-# System resumes automatically!
-```
-
----
-
-## 📂 Directory Structure
-
-```
-claude-automation/
-├── scripts/
-│   ├── autonomous_orchestrator.sh       # Main loop coordinator
-│   ├── start_autonomous_workflow.sh     # Easy workflow starter
-│   ├── shared_knowledge_manager.sh      # Agent communication
-│   ├── agent_prompts_with_knowledge.sh  # Agent prompt templates
-│   └── demo_agent_communication.sh      # Communication demo
-│
-├── docs/
-│   ├── architecture.md                  # System architecture
-│   ├── usage-guide.md                   # Complete usage guide
-│   └── agent-communication.md           # Agent communication docs
-│
-├── examples/
-│   └── example-workflows/               # Example workflow configs
-│
-├── tests/
-│   └── test_autonomous_system.sh        # System tests
-│
-└── README.md                            # This file
+# Works with ANY tmux session (not just workers)
+claude-inject tmux-inject \
+    --name cclaude-coding-agent \
+    --message "Add tests for this function"
 ```
 
 ---
 
 ## 🏗️ Architecture
 
-### File-Based Coordination
+### Component Overview
 
 ```
-/tmp/agenthub_autonomous/
-├── shared_knowledge.json       # Agent communication hub
-├── current_task.json           # Task for agent to execute
-├── task_result_*.json          # Agent execution results
-├── tests_passed.flag           # Completion condition
-├── review_approved.flag        # Completion condition
-├── security_passed.flag        # Completion condition
-└── workflow_complete.flag      # Final stop signal
+┌─────────────────────────────────────────────────────────┐
+│                  User / Orchestrator                    │
+└─────────────────────────────────────────────────────────┘
+                         │
+         ┌───────────────┴───────────────┐
+         │                               │
+    ┌────▼──────┐                  ┌────▼──────────┐
+    │ cclaude-rs│                  │ claude-inject │
+    │(Interactive)                 │(Background)   │
+    └────┬──────┘                  └────┬──────────┘
+         │                               │
+         │ Sets agent env var            │ Sets agent env var
+         │ Opens new terminal            │ Creates detached tmux
+         │                               │ Registers in worker registry
+         │                               │
+         └───────────────┬───────────────┘
+                         │
+                    ┌────▼─────────┐
+                    │ Tmux Session │
+                    │ Named:       │
+                    │ cclaude-{agent} or worker-{name}
+                    └────┬─────────┘
+                         │
+                    ┌────▼─────────┐
+                    │ Claude Code  │
+                    │ CLI Running  │
+                    └────┬─────────┘
+                         │
+                    ┌────▼─────────┐
+                    │ Session Hook │
+                    │ Detects agent│
+                    │ from env/status
+                    └────┬─────────┘
+                         │
+                    ┌────▼─────────┐
+                    │ call_agent() │
+                    │ Loads agent  │
+                    │ instructions │
+                    └────┬─────────┘
+                         │
+                    ┌────▼─────────┐
+                    │ Agent Works  │
+                    │ as specialist│
+                    └──────────────┘
 ```
 
-### Agent Types
+### How Agent Loading Works
 
-- **coding-agent**: Implements features, writes code
-- **test-orchestrator-agent**: Writes and runs tests
-- **debugger-agent**: Finds and fixes bugs
-- **code-reviewer-agent**: Reviews code quality
-- **security-auditor-agent**: Security audits
-- **system-architect-agent**: Architecture design
+1. **Launch**: `cclaude-rs --agent coding-agent` or `claude-inject spawn-worker --agent coding-agent`
+2. **Environment**: Launcher sets agent type (infrastructure detail)
+3. **Tmux Session**: Created with name `cclaude-coding-agent` or custom worker name
+4. **Claude Starts**: CLI runs in tmux session
+5. **Hooks Execute**: `.claude/hooks/session_start.py` runs automatically
+6. **Status Line**: Shows `🤖 Agent: coding-agent`
+7. **Agent Loads**: Claude calls `mcp__agenthub_http__call_agent("coding-agent")`
+8. **Work Begins**: Agent receives instructions and starts working
+
+---
+
+## 🔄 Workflows
+
+### Interactive Development (cclaude-rs)
+
+```bash
+# 1. Launch agent in new terminal
+cclaude-rs --agent coding-agent "Implement feature X"
+
+# 2. New terminal opens, Claude starts as coding-agent
+# 3. Work interactively with visible output
+# 4. Close terminal when done
+```
+
+### Background Automation (spawn-worker)
+
+```bash
+# 1. Create MCP task first (using parent project tools)
+# task_id = create_mcp_task(...)
+
+# 2. Spawn worker with task ID
+claude-inject spawn-worker \
+    --name worker-feature-x \
+    --agent coding-agent \
+    --task-id $task_id \
+    --prompt "Implement feature X from task"
+
+# 3. Monitor worker status
+claude-inject worker-status --name worker-feature-x
+
+# 4. Inject additional instructions if needed
+claude-inject tmux-inject \
+    --name worker-feature-x \
+    --message "Also add error handling"
+
+# 5. Check completion or stop worker
+claude-inject stop-worker --name worker-feature-x
+```
+
+### Parallel Workers
+
+```bash
+# Spawn multiple workers for parallel execution
+claude-inject spawn-worker --name worker-frontend --agent coding-agent --prompt "Build UI"
+claude-inject spawn-worker --name worker-backend --agent coding-agent --prompt "Build API"
+claude-inject spawn-worker --name worker-tests --agent test-orchestrator-agent --prompt "Write tests"
+
+# Monitor all
+claude-inject list-workers
+
+# Each works independently in parallel
+```
 
 ---
 
@@ -233,318 +296,137 @@ claude-automation/
 ### Environment Variables
 
 ```bash
-# MCP API endpoint
-export MCP_API_URL="http://localhost:8000/api"
+# Set default working directory
+export CLAUDE_WORK_DIR=/path/to/project
 
-# Git branch ID (required)
-export GIT_BRANCH_ID="branch-uuid"
+# Set MCP backend URL (if using task management)
+export MCP_API_URL=http://localhost:8000
 
-# Working directory
-export WORK_DIR="/tmp/agenthub_autonomous"
-
-# Sleep interval (seconds)
-export SLEEP_INTERVAL="2"
+# Set git branch ID (for MCP task creation)
+export GIT_BRANCH_ID=branch-uuid-here
 ```
 
-### Custom Agent Prompts
+### Tmux Session Naming
 
-Create custom agent prompts in `/tmp/agenthub_autonomous/prompts/`:
+- **cclaude-rs**: `cclaude-{agent-name}`
+  - Example: `cclaude-coding-agent`
+- **spawn-worker**: `{worker-name}`
+  - Example: `worker-feature-x`
 
-```bash
-cat > /tmp/agenthub_autonomous/prompts/my-agent.txt <<'EOF'
-You are a specialized agent for [TASK].
+### Terminal Detection
 
-Read shared knowledge before starting:
-cat /tmp/agenthub_autonomous/shared_knowledge.json
-
-After completing work, write discoveries:
-/path/to/shared_knowledge_manager.sh add-discovery "my-agent" "discovery"
-
-Write result JSON using Bash tool.
-EOF
-```
+cclaude-rs automatically detects platform and uses:
+- **WSL2**: Windows Terminal (`wt.exe`)
+- **Linux**: GNOME Terminal (`gnome-terminal`)
+- **macOS**: Terminal.app (`open -a Terminal`)
 
 ---
 
-## 📊 Integration
+## 📝 Best Practices
 
-### With Main Project
+### When to Use cclaude-rs
 
-```bash
-# From main project
-cd /home/daihu/__projects__/4genthub
+✅ Interactive development
+✅ Debugging and testing
+✅ Quick prototyping
+✅ Tasks requiring manual intervention
+✅ Real-time feedback needed
 
-# Start autonomous workflow
-./claude-automation/scripts/start_autonomous_workflow.sh \
-    "$PROJECT_ID" \
-    "$GIT_BRANCH" \
-    "$GOAL"
-```
+### When to Use spawn-worker
 
-### With MCP Server
+✅ Long-running tasks (hours)
+✅ Background automation
+✅ Parallel execution (multiple tasks)
+✅ Fire-and-forget workflows
+✅ No user interaction needed
 
-The system integrates seamlessly with MCP (Model Context Protocol):
+### Worker Management
 
-- **Tasks**: Created and managed via MCP API
-- **Context**: Shared knowledge synced to MCP context
-- **State**: Persistent across sessions
-- **Coordination**: MCP provides task queue
-
-```bash
-# MCP API endpoints used
-POST /api/manage_task          # Task CRUD
-POST /api/manage_subtask       # Subtask operations
-POST /api/manage_context       # Context management
-POST /api/manage_git_branch    # Branch operations
-```
+- **Name workers descriptively**: `worker-auth-implementation` not `worker-1`
+- **Track task IDs**: Link workers to MCP tasks for context
+- **Monitor regularly**: Use `list-workers` and `worker-status`
+- **Clean up**: Stop completed workers to free resources
 
 ---
 
 ## 🧪 Testing
 
-### Run All Tests
-
 ```bash
-./tests/test_autonomous_system.sh
+# Test cclaude-rs
+./target/release/cclaude-rs --agent coding-agent "echo 'test'"
+
+# Test spawn-worker
+./target/release/claude-inject spawn-worker \
+    --name test-worker \
+    --agent coding-agent \
+    --prompt "echo 'background test'"
+
+# Verify worker created
+./target/release/claude-inject list-workers
+
+# Check tmux session exists
+tmux ls | grep test-worker
+
+# Clean up
+./target/release/claude-inject stop-worker --name test-worker
 ```
 
-### Test Agent Communication
+---
 
-```bash
-./scripts/demo_agent_communication.sh
-```
+## 📚 Additional Documentation
 
-### Test Specific Workflow
-
-```bash
-# Create test workflow
-./scripts/start_autonomous_workflow.sh \
-    "test-project" \
-    "test/simple-feature" \
-    "Create a simple calculator function with add, subtract, multiply operations. Include unit tests."
-```
+- **WebSocket Coordinator**: See `docs/websocket-comparison.md` and `docs/websocket-auto-input-architecture.md`
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Issue: Orchestrator exits immediately
-
-**Cause**: No tasks in MCP
-
-**Solution**:
-```bash
-# List tasks
-curl -s http://localhost:8000/api/manage_task \
-     -d '{"action":"list","git_branch_id":"branch-id"}' | jq
-```
-
-### Issue: Agent doesn't write result file
-
-**Cause**: Agent prompt missing file write instruction
-
-**Solution**: Check agent prompt includes:
-```bash
-After work, write result using Bash tool:
-bash -c 'cat > /tmp/agenthub_autonomous/task_result_ID.json <<EOJ
-{"status": "success"}
-EOJ'
-```
-
-### Issue: Workflow never completes
-
-**Cause**: Missing completion flags
-
-**Solution**: Check which flags are missing:
-```bash
-ls -la /tmp/agenthub_autonomous/*.flag
-
-# Create missing flags manually if needed
-touch /tmp/agenthub_autonomous/tests_passed.flag
-```
-
-### Debug Mode
-
-Enable verbose logging:
+### Worker Not Starting
 
 ```bash
-# Edit autonomous_orchestrator.sh
-# Add --verbose to claude -p calls
+# Check tmux sessions
+tmux ls
 
-claude -p --verbose --append-system-prompt "..." "query"
+# Attach to worker session to see output
+tmux attach -t worker-name
+
+# Check worker registry
+cat ~/.claude-workers/registry.json
 ```
 
----
-
-## 🔗 API Reference
-
-### Shared Knowledge Manager
+### Agent Not Loading
 
 ```bash
-# Initialize knowledge
-./scripts/shared_knowledge_manager.sh init
+# Verify hooks are present
+ls -la .claude/hooks/session_start.py
 
-# Add discovery
-./scripts/shared_knowledge_manager.sh add-discovery "agent" "discovery"
-
-# Add warning
-./scripts/shared_knowledge_manager.sh add-warning "agent" "warning" "severity"
-
-# Send message
-./scripts/shared_knowledge_manager.sh add-message "from" "to" "message"
-
-# Get knowledge
-./scripts/shared_knowledge_manager.sh get
-
-# Get messages for agent
-./scripts/shared_knowledge_manager.sh get-messages "agent"
-
-# Export to MCP
-./scripts/shared_knowledge_manager.sh export-mcp "task-id"
+# Check status line in running session
+# Should show: 🤖 Agent: <agent-name>
 ```
 
----
+### Terminal Not Opening (cclaude-rs)
 
-## 📈 Performance
+```bash
+# Check platform detection
+uname -a
 
-| Metric | Value |
-|--------|-------|
-| **Latency per task** | 3-10 seconds |
-| **Parallel agents** | Configurable (sequential by default) |
-| **Memory usage** | ~50MB |
-| **Disk usage** | ~10MB per workflow |
-| **Token efficiency** | 90% savings vs repeated context |
+# WSL2: Verify wt.exe available
+which wt.exe
+
+# Linux: Verify gnome-terminal available
+which gnome-terminal
+
+# macOS: Terminal.app should be built-in
+```
 
 ---
 
 ## 🤝 Contributing
 
-### Development Setup
-
-```bash
-# Clone submodule
-git clone <repo> claude-automation
-cd claude-automation
-
-# Make changes
-vim scripts/autonomous_orchestrator.sh
-
-# Test changes
-./tests/test_autonomous_system.sh
-
-# Commit
-git add .
-git commit -m "feat: add new feature"
-git push
-```
-
-### Adding New Agent Type
-
-1. Create agent prompt template
-2. Add to `agent_prompts_with_knowledge.sh`
-3. Update orchestrator to recognize new agent
-4. Test with demo workflow
+This is part of the agenthub project. See parent project for contribution guidelines.
 
 ---
 
-## 📚 Documentation
+## 📄 License
 
-- **[Architecture](docs/architecture.md)**: System design and components
-- **[Usage Guide](docs/usage-guide.md)**: Complete usage instructions
-- **[Agent Communication](docs/agent-communication.md)**: How agents communicate
-
----
-
-## 🎯 Use Cases
-
-### 1. Continuous Development
-
-```bash
-# Auto-implement features
-./scripts/start_autonomous_workflow.sh \
-    "proj" "feature/auth" \
-    "Build complete authentication system"
-```
-
-### 2. Automated Testing & QA
-
-```bash
-# Auto-write and run tests
-./scripts/start_autonomous_workflow.sh \
-    "proj" "test/coverage" \
-    "Increase test coverage to 100% for auth module"
-```
-
-### 3. Bug Fixing Automation
-
-```bash
-# Auto-debug and fix
-./scripts/start_autonomous_workflow.sh \
-    "proj" "fix/bug-123" \
-    "Fix JWT token expiry bug reported in issue #123"
-```
-
-### 4. Code Quality Improvement
-
-```bash
-# Auto-refactor
-./scripts/start_autonomous_workflow.sh \
-    "proj" "refactor/auth" \
-    "Refactor authentication module to follow SOLID principles"
-```
-
----
-
-## 🔒 Security
-
-### Best Practices
-
-- **Code review required**: Always review generated code
-- **Test before deploy**: Run comprehensive tests
-- **Monitor logs**: Check agent logs for anomalies
-- **Limit permissions**: Run with minimal required permissions
-- **Audit trails**: MCP provides complete audit history
-
-### Known Limitations
-
-- Agents use `claude -p` which requires Claude Code subscription
-- File system access required (`/tmp/agenthub_autonomous`)
-- MCP server must be running and accessible
-- No built-in rate limiting (relies on Claude Code limits)
-
----
-
-## 📝 License
-
-[Your License Here]
-
----
-
-## 🙏 Acknowledgments
-
-- Built on [Claude Code](https://docs.claude.com/en/docs/claude-code)
-- Inspired by [AutoGPT](https://github.com/Significant-Gravitas/AutoGPT)
-- Uses [Model Context Protocol (MCP)](https://docs.claude.com/en/mcp)
-
----
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](your-repo/issues)
-- **Discussions**: [GitHub Discussions](your-repo/discussions)
-- **Documentation**: [Wiki](your-repo/wiki)
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Parallel agent execution
-- [ ] Web UI for monitoring
-- [ ] Custom agent marketplace
-- [ ] Cloud deployment support
-- [ ] Advanced error recovery
-- [ ] Performance optimizations
-
----
-
-**Transform your development workflow with autonomous AI agents!** 🚀
+See parent project LICENSE file.

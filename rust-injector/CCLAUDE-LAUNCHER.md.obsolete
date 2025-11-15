@@ -1,0 +1,340 @@
+# cclaude-rs - Custom Claude Launcher
+
+## Overview
+
+`cclaude-rs` is a Rust-based Claude launcher that automatically sets agent roles via environment variables, enabling `.claude/hooks` to detect the agent type without parsing conversation history.
+
+## ✅ Features
+
+- **Automatic Agent Role**: Sets `CCLAUDE_AGENT` environment variable for hooks
+- **Permission Skipping**: Always runs with `--dangerously-skip-permissions`
+- **Hook Integration**: Compatible with `.claude/hooks/session_start.py`
+- **Simple Syntax**: Easy-to-use command-line interface
+- **Cross-Platform**: Works on Linux, macOS, Windows (WSL2)
+
+## 🚀 Quick Start
+
+### 1. Build the Binary
+
+```bash
+cd /home/daihu/__projects__/4genthub/claude-automation/rust-injector
+cargo build --release --bin cclaude-rs
+```
+
+**Binary location**: `target/release/cclaude-rs`
+
+### 2. Create Alias (Optional)
+
+Add to `~/.bashrc`:
+
+```bash
+alias cclaude='/home/daihu/__projects__/4genthub/claude-automation/rust-injector/target/release/cclaude-rs'
+```
+
+Then reload:
+
+```bash
+source ~/.bashrc
+```
+
+## 📖 Usage
+
+### Basic Syntax
+
+```bash
+cclaude-rs --agent <agent-name> [OPTIONS] [PROMPT]
+```
+
+### Examples
+
+#### 1. Launch with Specific Agent
+
+```bash
+# Coding agent
+./target/release/cclaude-rs --agent coding-agent "Implement user authentication"
+
+# Test orchestrator
+./target/release/cclaude-rs --agent test-orchestrator-agent "Run all unit tests"
+
+# Documentation agent
+./target/release/cclaude-rs --agent documentation-agent "Update README.md"
+```
+
+#### 2. Launch with Task ID
+
+```bash
+# Using task ID reference
+./target/release/cclaude-rs --agent coding-agent "task_id: 381291d6-fa7f-4e60-80c5-0d1b86664722"
+
+# Using subtask ID reference
+./target/release/cclaude-rs --agent coding-agent "subtask_id: xyz-456, task_id: abc-123"
+```
+
+#### 3. Launch with Custom Directory
+
+```bash
+./target/release/cclaude-rs --agent coding-agent --dir /home/user/project "Fix bug in auth.js"
+```
+
+#### 4. Launch with Default Agent (master-orchestrator)
+
+```bash
+# No --agent flag defaults to master-orchestrator-agent
+./target/release/cclaude-rs "Analyze codebase structure"
+```
+
+#### 5. Using launch Subcommand
+
+```bash
+# Alternative syntax using subcommand
+./target/release/cclaude-rs launch coding-agent "Implement JWT authentication"
+```
+
+## 🔧 How It Works
+
+### Environment Variable Pattern
+
+1. **cclaude-rs** sets `CCLAUDE_AGENT` environment variable
+2. Spawns Claude with `--dangerously-skip-permissions`
+3. **session_start.py** hook reads `CCLAUDE_AGENT` (line 1538)
+4. Hook automatically loads agent-specific initialization messages
+
+### Hook Detection Code
+
+In `.claude/hooks/session_start.py`:
+
+```python
+# CHECK FOR CCLAUDE_AGENT ENVIRONMENT VARIABLE FIRST (highest priority)
+cclaude_agent = os.getenv("CCLAUDE_AGENT")
+if cclaude_agent:
+    agent_name = cclaude_agent
+```
+
+This means hooks will **automatically detect the agent type** without needing to parse conversation history.
+
+## 📊 Comparison with Bash cclaude
+
+| Feature | cclaude-rs (Rust) | cclaude (Bash) |
+|---------|-------------------|----------------|
+| **Language** | Rust | Bash |
+| **Speed** | ✅ Native binary | ⚠️ Interpreted |
+| **Agent Detection** | ✅ `CCLAUDE_AGENT` env var | ✅ `CCLAUDE_AGENT` env var |
+| **Auto Permissions** | ✅ `--dangerously-skip-permissions` | ✅ `--dangerously-skip-permissions` |
+| **Terminal Spawning** | ✅ Opens new terminal + tmux | ✅ Opens new terminal |
+| **Tmux Session** | ✅ Creates named session | ❌ No |
+| **Message Injection** | ✅ Via tmux send-keys | ❌ No |
+| **Cross-Platform** | ✅ WSL2, Linux, macOS | ⚠️ Limited |
+| **Registry Integration** | ✅ Compatible with worker registry | ❌ No |
+
+## 🎯 Integration with Worker System
+
+### How cclaude-rs Works
+
+**cclaude-rs** now combines the best of both worlds:
+- Creates tmux session named `cclaude-{agent}` (e.g., `cclaude-coding-agent`)
+- Opens new terminal window automatically
+- Attaches to tmux session for easy tracking
+- Supports message injection via tmux send-keys
+
+### Comparison with spawn-worker
+
+```bash
+# cclaude-rs: Interactive development with new terminal
+cclaude-rs --agent coding-agent "task_id: abc-123"
+# Creates: cclaude-coding-agent session
+# Opens: New terminal window attached to session
+# Use case: Manual work, debugging, real-time interaction
+
+# spawn-worker: Background automation with named workers
+./target/release/claude-inject spawn-worker \
+    --name worker-1 \
+    --agent coding-agent \
+    --task-id abc-123 \
+    --prompt "Implement authentication"
+# Creates: worker-1 session
+# Opens: Background (detached)
+# Use case: Long-running tasks, parallel workers
+```
+
+### Tmux Session Management
+
+```bash
+# List cclaude-rs sessions
+tmux list-sessions | grep cclaude-
+
+# Attach to existing cclaude-rs session
+tmux attach -t cclaude-coding-agent
+
+# Kill cclaude-rs session
+tmux kill-session -t cclaude-coding-agent
+
+# Inject message into cclaude-rs session
+tmux send-keys -l -t cclaude-coding-agent "Add error handling"
+tmux send-keys -t cclaude-coding-agent Enter
+```
+
+## 🤖 Available Agents
+
+Common agent types (use with `--agent`):
+
+- `master-orchestrator-agent` - Default coordinator
+- `coding-agent` - Implementation
+- `test-orchestrator-agent` - Testing
+- `documentation-agent` - Documentation
+- `debugger-agent` - Debugging
+- `security-auditor-agent` - Security review
+- `code-reviewer-agent` - Code review
+- `devops-agent` - Infrastructure
+- `system-architect-agent` - Architecture
+- ... and 30+ more
+
+## 📝 Command-Line Options
+
+### Global Options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--agent` | `-a` | Agent name | `master-orchestrator-agent` |
+| `--dir` | `-d` | Working directory | Current directory |
+| `[PROMPT]` | - | Initial prompt for Claude | None |
+
+### Subcommands
+
+#### `launch`
+
+```bash
+cclaude-rs launch <AGENT> [PROMPT]
+```
+
+Alternative syntax for launching Claude with specific agent.
+
+## 💡 Advanced Usage
+
+### 1. Chain with Other Tools
+
+```bash
+# Get task ID from MCP, then launch
+TASK_ID=$(mcp_task_id_from_api) && \
+cclaude-rs --agent coding-agent "task_id: $TASK_ID"
+```
+
+### 2. Use in Scripts
+
+```bash
+#!/bin/bash
+# automated-workflow.sh
+
+# Start coding agent
+cclaude-rs --agent coding-agent "Implement feature X" &
+
+# Wait for completion, then start tests
+wait
+cclaude-rs --agent test-orchestrator-agent "Run tests for feature X"
+```
+
+### 3. Environment Variable Override
+
+```bash
+# Set agent via environment instead of flag
+export CCLAUDE_AGENT="debugging-agent"
+cclaude-rs "Find memory leak in server.js"
+```
+
+## 🔍 Debugging
+
+### Check Environment Variable
+
+```bash
+# Verify CCLAUDE_AGENT is set correctly
+echo $CCLAUDE_AGENT
+```
+
+### View Hook Logs
+
+```bash
+# Check session_start.py log
+cat ~/logs/claude-hooks/session_start_main.log
+```
+
+### Verbose Output
+
+Add debug output to see what's happening:
+
+```bash
+# Run with cargo for debug info
+cargo run --bin cclaude-rs -- --agent coding-agent "test prompt"
+```
+
+## 🚧 Limitations
+
+1. **Session Naming**: Always uses `cclaude-{agent}` format
+   - **Why**: Consistent, predictable session names for easy management
+   - **Workaround**: Use `spawn-worker` for custom worker names
+
+2. **No Custom Instructions (yet)**: No `--custom` parameter
+   - **Why**: Initial implementation prioritizes core functionality
+   - **Workaround**: Include instructions in prompt text
+
+3. **Single Session Per Agent**: Re-running same agent kills previous session
+   - **Why**: Prevents session name conflicts
+   - **Workaround**: Use `spawn-worker` for multiple workers of same agent type
+
+## 🔄 Migration from Bash cclaude
+
+### Before (Bash)
+
+```bash
+cclaude coding-agent "task_id: abc-123"
+```
+
+### After (Rust)
+
+```bash
+cclaude-rs --agent coding-agent "task_id: abc-123"
+```
+
+Or with alias:
+
+```bash
+alias cclaude-rust='cclaude-rs --agent'
+cclaude-rust coding-agent "task_id: abc-123"
+```
+
+## 📦 Installation
+
+### Option 1: Build from Source
+
+```bash
+cd rust-injector
+cargo build --release --bin cclaude-rs
+sudo ln -s $(pwd)/target/release/cclaude-rs /usr/local/bin/cclaude-rs
+```
+
+### Option 2: Alias in .bashrc
+
+```bash
+echo "alias cclaude='/path/to/rust-injector/target/release/cclaude-rs'" >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Option 3: Copy to PATH
+
+```bash
+cp target/release/cclaude-rs ~/.local/bin/
+# Ensure ~/.local/bin is in PATH
+```
+
+## 🎯 Next Steps
+
+1. **Try the launcher**: Run `cclaude-rs --agent coding-agent "test"`
+2. **Check hook detection**: Verify hooks detect agent via logs
+3. **Integrate with workflow**: Use in automation scripts
+4. **Combine with workers**: Use for interactive work, spawn-worker for background
+
+## 📚 Related Documentation
+
+- **ORCHESTRATION-CLI.md** - Worker system and spawn-worker
+- **QUICK-START.md** - Complete orchestration guide
+- **ARCHITECTURE.md** - System design and PTY injection explanation
+- **.claude/bin/cclaude** - Original bash implementation
+- **.claude/hooks/session_start.py** - Hook that detects CCLAUDE_AGENT
